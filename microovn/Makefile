@@ -8,4 +8,4 @@ $(CHARMFILE): src/charm.py charmcraft.yaml
 
 clean:
 	charmcraft clean
-	rm $(CHARMFILE)
+	rm $(CHARMFILE) -f
