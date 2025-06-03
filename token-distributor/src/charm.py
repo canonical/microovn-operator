@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import logging, ops, os
-
 logger = logging.getLogger(__name__)
 CONTROL_RELATION = "microovn-cluster"
 MIRROR_PREFIX = "mirror-"
@@ -10,28 +9,21 @@ def mirrorid(hostname):
 
 class TokenDistributor(ops.CharmBase):
     def handle_mirror(self, relation_name):
-        if not (relation := self.model.get_relation(relation_name)):
-            return False
+        if relation := self.model.get_relation(relation_name):
+            relation_data = relation.data
+            for unit in relation_data:
+                if relation_data[unit].get("mirror") == "up":
+                    # add all tokens in the other side of the mirror to this side
+                    for k, v in relation_data[unit].items():
+                        if MIRROR_PREFIX in k: relation_data[self.unit][k] = v
 
-        relation_data = relation.data
-        if "mirror" not in relation_data[self.unit]:
-            relation_data[self.unit]["mirror"] = "up"
-
-        for unit in relation_data:
-            if "mirror" in relation_data[unit] and relation_data[unit]["mirror"] == "up":
-                # add all tokens in the other side of the mirror to this side
-                for k, v in relation_data[unit].items():
-                    if MIRROR_PREFIX in k:
-                        relation_data[self.unit][k] = v
-
-            if not "hostname" in relation_data[unit]:
-                continue
-
-            mirror_key = mirrorid(relation_data[unit]["hostname"])
-            if self.unit.name != unit.name and not mirror_key in relation_data[self.unit]:
-                logger.info("added {0} to mirror".format(mirror_key))
-                relation_data[self.unit][mirror_key] = "empty"
-        return True
+                if not "hostname" in relation_data[unit]:
+                    continue
+                mirror_key = mirrorid(relation_data[unit]["hostname"])
+                if self.unit.name != unit.name and \
+                   not mirror_key in relation_data[self.unit]:
+                    logger.info("added {0} to mirror".format(mirror_key))
+                    relation_data[self.unit][mirror_key] = "empty"
 
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
@@ -45,16 +37,14 @@ class TokenDistributor(ops.CharmBase):
 
     def _on_peers_changed(self, event: ops.RelationChangedEvent):
         if self.unit.is_leader():
-            self._handle_mirror(CONTROL_RELATION)
+            self.handle_mirror(CONTROL_RELATION)
 
     def _on_leader_elected(self, event: ops.RelationChangedEvent):
-        if not (relation := self.model.get_relation(CONTROL_RELATION)):
-            return
+        if (relation := self.model.get_relation(CONTROL_RELATION)):
+            if self.unit.is_leader():
+                relation.data[self.unit]["mirror"]="up"
+            elif relation.data[self.unit].get("mirror"):
+                relation.data[self.unit]["mirror"]="down"
 
-        if self.unit.is_leader():
-            relation.data[self.unit]["mirror"]="up"
-        elif relation.data[self.unit].get("mirror"):
-            relation.data[self.unit]["mirror"]="down"
-
-if __name__ == "__main__":  # pragma: nocover
-    ops.main(TokenDistributor)
+if __name__ == "__main__":
+    ops.main(TokenDistributor) # pragma: nocover
