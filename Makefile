@@ -13,7 +13,10 @@ $(VENV):
 	python3 -m venv $(VENV) --upgrade-deps
 	$(PIP) install -r tests/requirements.txt
 
-test: $(VENV)
+lint: $(VENV)
+	./$(VENV)/bin/ruff check microovn tests
+
+test: $(VENV) lint
 	./$(VENV)/bin/pytest -v -n $(PARALLEL) tests
 
 clean:
