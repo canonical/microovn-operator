@@ -31,6 +31,9 @@ def juju(request: pytest.FixtureRequest):
                 })
 
                 yield juju
+
+                if request.session.testsfailed:
+                    print(juju.debug_log(limit=1000))
                 break
         except (jubilant._juju.CLIError) as e:
             if retry_count and "transaction aborted" in e.stderr:
