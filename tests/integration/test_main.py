@@ -59,3 +59,22 @@ def test_microcluster_leader_down(juju: jubilant.Juju):
         juju.remove_unit("microovn/1")
     juju.add_unit("microovn")
     juju.wait(jubilant.all_active)
+
+def test_certificates_integration(juju: jubilant.Juju):
+    juju.deploy(microovn_charm_path)
+    juju.add_unit("microovn")
+    juju.deploy(token_distributor_charm_path)
+    juju.deploy("self-signed-certificates")
+    juju.integrate("microovn","microcluster-token-distributor")
+    juju.integrate("microovn","self-signed-certificates")
+    juju.wait(jubilant.all_active)
+    juju.wait(lambda _: "Pushed certificate to workload" in juju.debug_log())
+    destination = juju.status().apps["microovn"].units["microovn/1"].public_address
+    destination = destination + ":6643"
+    try:
+        juju.exec("openssl s_client -connect {0} -verify_return_error".format(destination), unit="self-signed-certificates/0")
+        assert False, "Expected to fail, somehow passed"
+    except:
+        pass
+    output = juju.exec("openssl s_client -connect {0} -CAfile /tmp/ca-cert.pem -verify_return_error".format(destination), unit="self-signed-certificates/0")
+    assert("Verification: OK" in output.stdout)

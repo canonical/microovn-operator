@@ -4,12 +4,35 @@ import logging
 import os
 import time
 import subprocess
+from pathlib import Path
 
 import ops
 
+from typing import Optional
+
+from charms.tls_certificates_interface.v4.tls_certificates import (
+    Certificate,
+    CertificateRequestAttributes,
+    Mode,
+    PrivateKey,
+    TLSCertificatesRequiresV4,
+)
+
 logger = logging.getLogger(__name__)
 WORKER_RELATION = "cluster"
+CERTIFICATES_RELATION = "certificates"
 MIRROR_PREFIX = "mirror-"
+
+CERTIFICATE_NAME = "ca-cert.pem"
+PRIVATE_KEY_NAME = "ca-key.pem"
+CSR_ATTRIBUTES = CertificateRequestAttributes(
+    common_name="Charmed MicroOVN",
+    is_ca=True,
+)
+
+SECURE_FILE_MODE = 0o600
+def secure_opener(path, flags):
+    return os.open(path, flags, SECURE_FILE_MODE)
 
 def get_hostname():
     return os.uname().nodename
@@ -118,13 +141,98 @@ class MicroovnCharm(ops.CharmBase):
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
         self._stored.set_default(in_cluster=False)
+
+        self.ca_dir = Path("/var/snap/microovn/common/data/pki")
+        self.certificates = TLSCertificatesRequiresV4(
+            charm=self,
+            relationship_name=CERTIFICATES_RELATION,
+            certificate_requests=[CSR_ATTRIBUTES],
+            mode=Mode.APP,
+        )
+
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on.remove, self._on_remove)
         framework.observe(self.on[WORKER_RELATION].relation_changed,
                             self._on_cluster_changed)
         framework.observe(self.on[WORKER_RELATION].relation_created,
                             self._handle_relation_created)
+        framework.observe(
+            self.certificates.on.certificate_available, self._on_certificates_available
+        )
 
+    def _on_certificates_available(self, _: ops.EventBase):
+        """Check if the certificate or private key needs an update and perform the update.
+
+        This method retrieves the currently assigned certificate and private key associated with
+        the charm's TLS relation. It checks whether the certificate or private key has changed
+        or needs to be updated. If an update is necessary, the new certificate or private key is
+        stored.
+        """
+        provider_certificate, private_key = self.certificates.get_assigned_certificate(
+            certificate_request=CSR_ATTRIBUTES
+        )
+        if not provider_certificate or not private_key:
+            logger.debug("Certificate or private key is not available")
+            return
+        cert_updated = self._store_certificate(
+            certificate=str(provider_certificate.certificate) + "\n" + str(provider_certificate.ca)
+        )
+        key_updated = self._store_private_key(private_key=private_key)
+        needs_update = self._is_certificate_update_required(cert_updated) or \
+            self._is_private_key_update_required(private_key)
+        call_microovn_command("certificates", "set-ca",
+                                "--cert", self._certificate_path().as_posix(),
+                                "--key", self._private_key_path().as_posix())
+        return needs_update
+
+    def _is_certificate_update_required(self, certificate: Certificate) -> bool:
+        return self._get_existing_certificate() != certificate
+
+    def _is_private_key_update_required(self, private_key: PrivateKey) -> bool:
+        return self._get_existing_private_key() != private_key
+
+    def _get_existing_certificate(self) -> Optional[Certificate]:
+        return self._get_stored_certificate() if self._certificate_is_stored() else None
+
+    def _get_existing_private_key(self) -> Optional[PrivateKey]:
+        return self._get_stored_private_key() if self._private_key_is_stored() else None
+
+    def _certificate_path(self):
+        return self.ca_dir / CERTIFICATE_NAME
+
+    def _private_key_path(self):
+        return self.ca_dir / PRIVATE_KEY_NAME
+
+    def _certificate_is_stored(self) -> bool:
+        return os.path.isfile(self._certificate_path())
+
+    def _private_key_is_stored(self) -> bool:
+        return os.path.isfile(self._private_key_path())
+
+    def _get_stored_certificate(self) -> Certificate:
+        with open(self._certificate_path(), "r") as cert_file:
+            return Certificate.from_string(cert_file.read())
+
+    def _get_stored_private_key(self) -> PrivateKey:
+        with open(self._private_key_path(), "r") as key_file:
+            return PrivateKey.from_string(key_file.read())
+
+    def _store_certificate(self, certificate) -> bool:
+        """Store certificate in workload."""
+        if self._is_certificate_update_required(certificate):
+            with open(self._certificate_path(), "w", opener=secure_opener) as cert_file:
+                cert_file.write(str(certificate))
+                logger.info("Pushed certificate to workload")
+            return True
+        return False
+
+    def _store_private_key(self, private_key: PrivateKey) -> bool:
+        if self._is_private_key_update_required(private_key):
+            with open(self._private_key_path(), "w", opener=secure_opener) as key_file:
+                key_file.write(str(private_key))
+                logger.info("Pushed private key to workload")
+            return True
+        return False
 
     def add_hostname(self, relation_name):
         relation = self.model.get_relation(relation_name)
