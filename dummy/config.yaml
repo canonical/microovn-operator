@@ -1,0 +1,6 @@
+options:
+  dummy-option:
+    type: string
+    default: "noop"
+    description: "Does nothing"
+

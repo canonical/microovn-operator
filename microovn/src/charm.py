@@ -7,7 +7,10 @@ import subprocess
 
 import ops
 
+from charms.ovsdb_interface.v0.ovsdb import OVSDBProvides
+
 logger = logging.getLogger(__name__)
+OVSDB_RELATION = "ovsdb"
 WORKER_RELATION = "cluster"
 MIRROR_PREFIX = "mirror-"
 
@@ -28,6 +31,7 @@ def call_microovn_command(*args):
 
 class MicroovnCharm(ops.CharmBase):
     _stored = ops.StoredState()
+    ovsdb_provides = None
 
     def wait_for_pending(self):
         self.unit.status = ops.WaitingStatus("Waiting on pending nodes")
@@ -124,6 +128,10 @@ class MicroovnCharm(ops.CharmBase):
                             self._on_cluster_changed)
         framework.observe(self.on[WORKER_RELATION].relation_created,
                             self._handle_relation_created)
+        self.ovsdb_provides = OVSDBProvides(
+            charm=self,
+            relation_name=OVSDB_RELATION,
+        )
 
 
     def add_hostname(self, relation_name):
@@ -239,7 +247,9 @@ class MicroovnCharm(ops.CharmBase):
                     event.defer()
                     return
 
-        self.handle_mirror(event.relation)
+        if self._stored.in_cluster:
+            self.handle_mirror(event.relation)
+            self.ovsdb_provides.update_relation_data()
 
 if __name__ == "__main__":  # pragma: nocover
     ops.main(MicroovnCharm)

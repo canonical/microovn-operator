@@ -14,11 +14,17 @@ jobs:
     with:
       name: microovn
       path: microovn
+  pack-dummy:
+    uses: canonical/microcluster-token-distributor-operator/.github/workflows/pack.yaml@main
+    with:
+      name: interface-consumer
+      path: dummy
   test:
     runs-on: ubuntu-latest
     needs:
       - pack-microcluster-token-distributor
       - pack-microovn
+      - pack-dummy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -27,6 +33,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: microovn
+      - uses: actions/download-artifact@v4
+        with:
+          name: interface-consumer
 
       - name: Set charm paths
         run: |
@@ -34,6 +43,8 @@ jobs:
           echo "MICROOVN_CHARM_PATH=$1" >> $GITHUB_ENV
           set -- ${{ needs.pack-microcluster-token-distributor.outputs.charms }}
           echo "TOKEN_DISTRIBUTOR_CHARM_PATH=$1" >> $GITHUB_ENV
+          set -- ${{ needs.pack-dummy.outputs.charms }}
+          echo "INTERFACE_CONSUMER_CHARM_PATH=$1" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |

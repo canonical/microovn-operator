@@ -1,0 +1,20 @@
+name: interface-consumer
+summary: Dummy consumer for testing interfaces
+description: Just for testing
+type: charm
+
+base: ubuntu@24.04
+platforms:
+  amd64:
+    build-on: [amd64]
+    build-for: [amd64]
+
+parts:
+  charm:
+    build-packages:
+      - git
+      - python3-dev
+
+requires:
+  ovsdb:
+    interface: ovsdb

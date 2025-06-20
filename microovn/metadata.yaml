@@ -16,3 +16,7 @@ requires:
   cluster:
     interface: worker-cluster
     limit: 1
+
+provides:
+  ovsdb:
+    interface: ovsdb
