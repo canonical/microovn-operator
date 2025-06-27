@@ -62,7 +62,7 @@ def test_microcluster_leader_down(juju: jubilant.Juju):
     juju.add_unit("microovn")
     juju.wait(jubilant.all_active)
 
-def test_integrate(juju: jubilant.Juju):
+def test_integrate_ovsdb(juju: jubilant.Juju):
     juju.deploy(microovn_charm_path)
     juju.add_unit("microovn")
     juju.deploy(token_distributor_charm_path)
@@ -76,3 +76,22 @@ def test_integrate(juju: jubilant.Juju):
     data = json_output["interface-consumer/0"]["relation-info"][0]["application-data"]
     assert(data.get("db_nb_connection_str"))
     assert(data.get("db_sb_connection_str"))
+
+def test_certificates_integration(juju: jubilant.Juju):
+    juju.deploy(microovn_charm_path)
+    juju.add_unit("microovn")
+    juju.deploy(token_distributor_charm_path)
+    juju.deploy("self-signed-certificates")
+    juju.integrate("microovn","microcluster-token-distributor")
+    juju.integrate("microovn","self-signed-certificates")
+    juju.wait(jubilant.all_active)
+    juju.wait(lambda _: "CA certificate updated, new certificates issued" in juju.debug_log())
+    destination = juju.status().apps["microovn"].units["microovn/1"].public_address
+    destination = destination + ":6643"
+    try:
+        juju.exec("openssl s_client -connect {0} -verify_return_error".format(destination), unit="self-signed-certificates/0")
+        assert False, "Expected to fail, somehow passed"
+    except:
+        pass
+    output = juju.exec("openssl s_client -connect {0} -CAfile /tmp/ca-cert.pem || true".format(destination), unit="self-signed-certificates/0")
+    assert("Verification: OK" in output.stdout)

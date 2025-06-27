@@ -16,6 +16,8 @@ requires:
   cluster:
     interface: worker-cluster
     limit: 1
+  certificates:
+    interface: tls-certificates
 
 provides:
   ovsdb:

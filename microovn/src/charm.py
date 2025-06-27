@@ -4,15 +4,35 @@ import logging
 import os
 import time
 import subprocess
+from pathlib import Path
 
 import ops
 
 from charms.microovn.v0.ovsdb import OVSDBProvides
+from typing import Optional
+
+from charms.tls_certificates_interface.v4.tls_certificates import (
+    Certificate,
+    CertificateRequestAttributes,
+    Mode,
+    PrivateKey,
+    TLSCertificatesRequiresV4,
+)
 
 logger = logging.getLogger(__name__)
 OVSDB_RELATION = "ovsdb"
 WORKER_RELATION = "cluster"
+CERTIFICATES_RELATION = "certificates"
 MIRROR_PREFIX = "mirror-"
+
+CSR_ATTRIBUTES = CertificateRequestAttributes(
+    common_name="Charmed MicroOVN",
+    is_ca=True,
+)
+
+SECURE_FILE_MODE = 0o600
+def secure_opener(path, flags):
+    return os.open(path, flags, SECURE_FILE_MODE)
 
 def get_hostname():
     return os.uname().nodename
@@ -20,11 +40,12 @@ def get_hostname():
 def mirror_id(hostname):
     return MIRROR_PREFIX + hostname
 
-def call_microovn_command(*args):
+def call_microovn_command(*args, stdin=None):
     result = subprocess.run(
         ["microovn", *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
+        input=stdin,
         text=True
     )
     return result.returncode, result.stdout
@@ -122,17 +143,58 @@ class MicroovnCharm(ops.CharmBase):
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
         self._stored.set_default(in_cluster=False)
+
+        self.ca_dir = Path("/var/snap/microovn/common/data/pki")
+        self.certificates = TLSCertificatesRequiresV4(
+            charm=self,
+            relationship_name=CERTIFICATES_RELATION,
+            certificate_requests=[CSR_ATTRIBUTES],
+            mode=Mode.APP,
+        )
+
+        self.ovsdb_provides = OVSDBProvides(
+            charm=self,
+            relation_name=OVSDB_RELATION,
+        )
+
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on.remove, self._on_remove)
         framework.observe(self.on[WORKER_RELATION].relation_changed,
                             self._on_cluster_changed)
         framework.observe(self.on[WORKER_RELATION].relation_created,
                             self._handle_relation_created)
-        self.ovsdb_provides = OVSDBProvides(
-            charm=self,
-            relation_name=OVSDB_RELATION,
+        framework.observe(
+            self.certificates.on.certificate_available, self._on_certificates_available
         )
 
+    def _on_certificates_available(self, _: ops.EventBase):
+        """Check if the certificate or private key needs an update and perform the update.
+
+        This method retrieves the currently assigned certificate and private key associated with
+        the charm's TLS relation. It checks whether the certificate or private key has changed
+        or needs to be updated. If an update is necessary, the new certificate or private key is
+        stored.
+        """
+        provider_certificate, private_key = self.certificates.get_assigned_certificate(
+            certificate_request=CSR_ATTRIBUTES
+        )
+        if not provider_certificate or not private_key:
+            logger.debug("Certificate or private key is not available")
+            return
+        combined_cert = str(provider_certificate.certificate) + "\n" + str(provider_certificate.ca)
+        combined_input = combined_cert + "\n" + str(private_key)
+        err, output = call_microovn_command("certificates", "set-ca",
+                                "--combined",stdin=combined_input)
+        if err:
+            logger.error(
+                "microovn certificates set-ca failed with error code {0}".format(code))
+            raise RuntimeError(
+                "Updating certificates failed with error code {0}".format(code))
+        if "New CA certificate: Issued" in output:
+            logger.info("CA certificate updated, new certificates issued")
+            return True
+
+        return False
 
     def add_hostname(self, relation_name):
         relation = self.model.get_relation(relation_name)
