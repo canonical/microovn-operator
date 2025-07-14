@@ -18,6 +18,8 @@ requires:
     limit: 1
   certificates:
     interface: tls-certificates
+  ovsdb-external:
+    interface: ovsdb-cms
 
 provides:
   ovsdb:
