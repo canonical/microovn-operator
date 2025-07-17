@@ -120,7 +120,7 @@ def test_certificates_integration(juju: jubilant.Juju):
     command_str = "openssl s_client -connect {0} -CAfile /root/pki/ca.pem -cert /root/pki/consumer.pem -key /root/pki/consumer.key -verify_return_error".format(destination)
     output = juju.exec(command_str, unit="interface-consumer/0")
 
-def test_certificates_integration(juju: jubilant.Juju):
+def test_ovn_k8s_integration(juju: jubilant.Juju):
     juju.deploy(microovn_charm_path)
     juju.add_unit("microovn")
     juju.deploy(token_distributor_charm_path)
@@ -128,10 +128,13 @@ def test_certificates_integration(juju: jubilant.Juju):
     juju.integrate("microovn","microcluster-token-distributor")
     juju.integrate("microovn","self-signed-certificates")
     juju.wait(jubilant.all_active)
+    juju_lxd_model = juju.model
 
     #setup ovn-central-k8s and its relations
-    juju_k8s = jubilant.Juju(model=None)
+    juju_k8s = jubilant.Juju()
     juju_k8s.add_model("ovn-k8s",cloud="mk8s")
+    #just to ensure the juju variable is the right model, due to weird jubilant behavior
+    juju = jubilant.Juju(model=juju_lxd_model)
     juju_k8s.deploy("ovn-central-k8s",channel="24.03/stable")
     juju_k8s.add_unit("ovn-central-k8s")
     juju_k8s.add_unit("ovn-central-k8s")

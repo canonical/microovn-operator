@@ -40,7 +40,45 @@ jobs:
 
       - name: Prepare Environment for functional tests
         run: |
-          sudo concierge prepare -p machine
+          # Use concierge to setup LXD, microk8s and bootstrap juju controller
+          cat <<EOF >>/tmp/concierge.yaml
+          juju:
+            channel: 3.5/stable
+
+          providers:
+            microk8s:
+              enable: true
+              bootstrap: false
+              addons:
+                - dns
+                - hostpath-storage
+                - metallb
+
+            lxd:
+              enable: true
+              bootstrap: true
+          EOF
+
+          # Workaround for canonical/concierge#75
+          sudo snap install microk8s --channel 1.32-strict/stable
+          sudo mkdir -p /var/snap/microk8s/current/args/certs.d/docker.io
+          cat <<EOF | sudo tee /var/snap/microk8s/current/args/certs.d/docker.io/hosts.toml
+          server = "$DOCKERHUB_MIRROR"
+          [host."$DOCKERHUB_MIRROR"]
+          capabilities = ["pull", "resolve"]
+          EOF
+          sudo microk8s stop
+          sudo microk8s start
+
+          sudo concierge prepare -c /tmp/concierge.yaml
+
+          # Add microk8s as a kubernetes substrate to the Juju controller
+          sudo microk8s status --wait
+          # The kubernetes API is not always immediately available to use, even if
+          # microk8s status reports ready state. These retries ensure that we don't
+          # fail the test unnecessarily
+          (r=30;while ! juju add-k8s mk8s --controller concierge-lxd ; do ((--r))||exit;sleep 2;done)
+          sudo snap install charmcraft --classic
 
       - name: Build interface consumer
         working-directory: tests/interface-consumer
