@@ -118,7 +118,7 @@ class MicroovnCharm(ops.CharmBase):
     def _microovn_central_exists(self):
         if not self._stored.in_cluster:
             return False
-        err, output = call_microovn_command("microovn status")
+        err, output = call_microovn_command("status")
         if err:
             logger.error("microovn status failed with error code {0}".format(err))
             raise RuntimeError(
