@@ -25,8 +25,13 @@ check-static: get-consumer-libs
 
 check-code: check-lint check-static
 
-check-system: $(VENV)
+check-unit: $(VENV)
+	tox -e unit
+
+check-integration: $(VENV)
 	./$(VENV)/bin/pytest -v -n $(PARALLEL) tests/integration $(TESTSUITEFLAGS)
+
+check-system: check-integration check-unit
 
 check: check-code check-system
 

@@ -40,6 +40,20 @@ jobs:
       - name: Check Code
         run: make check-code
 
+  unit-tests:
+    name: Unit Tests 
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Tox
+        run: |
+          sudo snap install astral-uv --classic
+          uv tool install tox --with tox-uv
+      - name: Run Unit Tests
+        run: tox -e unit
+
+
   pack-microcluster-token-distributor:
     uses: canonical/microcluster-token-distributor-operator/.github/workflows/pack.yaml@main
     with:
@@ -125,4 +139,4 @@ jobs:
           echo "INTERFACE_CONSUMER_CHARM_PATH=tests/interface-consumer/interface-consumer_amd64.charm" >> $GITHUB_ENV
 
       - name: Run test
-        run: make test
+        run: make check-integration
