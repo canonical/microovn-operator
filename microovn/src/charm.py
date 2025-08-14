@@ -197,7 +197,14 @@ class MicroovnCharm(ops.CharmBase):
             try:
                 subprocess.run(["snap", "wait", "system", "seed.loaded"], check=True)
                 subprocess.run(
-                    ["snap", "install", "microovn", "--channel", "latest/edge"], check=True
+                    [
+                        "snap",
+                        "install",
+                        "microovn",
+                        "--channel",
+                        "latest/edge/workaround-port-16443",
+                    ],
+                    check=True,
                 )
                 break
             except subprocess.CalledProcessError as e:
