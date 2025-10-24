@@ -10,8 +10,6 @@ description: |
 maintainers:
   - OVN Engineering <ubuntu-ovn-eng@lists.launchpad.net>
 
-base: ubuntu@24.04
-
 requires:
   cluster:
     interface: worker-cluster

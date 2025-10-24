@@ -36,7 +36,7 @@ def test_install(mock_run):
     ctx.run(ctx.on.install(), state_in)
     mock_run.assert_any_call(["snap", "wait", "system", "seed.loaded"], check=True)
     mock_run.assert_any_call(
-        ["snap", "install", "microovn", "--channel", "latest/edge"], check=True
+        ["snap", "install", "microovn", "--channel", charm.MICROOVN_CHANNEL], check=True
     )
     mock_run.assert_any_call(
         ["microovn", "waitready"],

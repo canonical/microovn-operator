@@ -25,7 +25,7 @@ OVSDB_RELATION = "ovsdb"
 WORKER_RELATION = "cluster"
 CERTIFICATES_RELATION = "certificates"
 OVSDBCMD_RELATION = "ovsdb-external"
-MICROOVN_CHANNEL = "latest/edge"
+MICROOVN_CHANNEL = "25.03/stable"
 
 CSR_ATTRIBUTES = CertificateRequestAttributes(
     common_name="Charmed MicroOVN",
