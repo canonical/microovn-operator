@@ -8,6 +8,4 @@ __pycache__/
 .idea
 .vscode/
 .fuse_hidden*
-tests/interface-consumer/lib/charms/microovn/v0/ovsdb.py
-tests/interface-consumer/lib/charms/tls_certificates_interface/v4/tls_certificates.py
 .tox/
