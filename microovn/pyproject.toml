@@ -5,7 +5,6 @@ requires-python = ">=3.12"
 dependencies = [
     "ops ~= 2.17",
     "cryptography==44.0.1",
-    "maturin<1.1.0",
     "pydantic==2.9.1",
 ]
 
@@ -24,6 +23,3 @@ dev = [
     "codespell>=2.4.1",
     "pyright>=1.1.402",
 ]
-
-[build-system]
-requires = ["maturin<1.1.0"]

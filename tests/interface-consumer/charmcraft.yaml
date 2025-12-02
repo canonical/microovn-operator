@@ -8,21 +8,29 @@ links:
 
 platforms:
   ubuntu@24.04:amd64:
-
 parts:
+  poetry-deps:
+    plugin: nil
+    build-packages:
+      - curl
+    override-build: |
+      PIP_BREAK_SYSTEM_PACKAGES=true python3 -m pip install --user poetry==2.2.1 poetry-plugin-export==1.9.0
+      ln -sf "$HOME/.local/bin/poetry" /usr/local/bin/poetry
+      poetry config --local installer.no-binary :all:
+    build-environment:
+      - POETRY_VERSION: "2.2.1"
   charm:
     source: .
-    plugin: uv
+    plugin: poetry
+    after: [poetry-deps]
     build-packages:
       - git
       - python3-dev
-      - cargo
+      - cargo-1.85
       - libffi-dev
       - libssl-dev
       - pkg-config
-      - rustc
-    build-snaps:
-      - astral-uv
+      - rustc-1.85
 
 requires:
   ovsdb:
