@@ -88,7 +88,9 @@ OVN Southbound: OK (20.33.0)
 def test_dataplane_mode_passes(microovn_command, leader):
     ctx = testing.Context(charm.MicroovnCharm)
     ovsdb_relation = testing.Relation(
-        "ovsdb-external", "ovsdb-cms", remote_units_data={0: {"bound-address": "192.168.0.16"}}
+        "ovsdb-external",
+        "ovsdb-cms",
+        remote_app_data={"loadbalancer-address": "192.168.0.16"},
     )
     microovn_command.return_value = (0, "")
     with (
@@ -114,7 +116,9 @@ def test_dataplane_mode_passes(microovn_command, leader):
 def test_set_central_ips_config(microovn_command, logger_error, return_code):
     ctx = testing.Context(charm.MicroovnCharm)
     ovsdb_relation = testing.Relation(
-        "ovsdb-external", "ovsdb-cms", remote_units_data={0: {"bound-address": "192.168.0.16"}}
+        "ovsdb-external",
+        "ovsdb-cms",
+        remote_app_data={"loadbalancer-address": "192.168.0.16"},
     )
     microovn_command.return_value = (return_code, "")
     with ctx(ctx.on.start(), testing.State(relations=[ovsdb_relation])) as manager:
