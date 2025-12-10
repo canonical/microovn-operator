@@ -71,6 +71,7 @@ class MicroovnCharm(ops.CharmBase):
         self.ovsdbcms_requires = OVSDBCMSRequires(
             charm=self,
             relation_name=OVSDBCMD_RELATION,
+            external_connectivity=True,
         )
 
         framework.observe(self.on.install, self._on_install)
@@ -84,8 +85,12 @@ class MicroovnCharm(ops.CharmBase):
         framework.observe(self.ovsdbcms_requires.on.goneaway, self._on_ovsdbcms_broken)
 
     def _set_central_ips_config(self):
-        addresses = self.ovsdbcms_requires.bound_addresses()
-        err, _ = call_microovn_command("config", "set", "ovn.central-ips", ",".join(addresses))
+        address = self.ovsdbcms_requires.loadbalancer_address()
+        if not address:
+            # Note(gboutry): This should not happen as caller is calling `remote_ready` first
+            logger.error("No loadbalancer address provided by ovsdb-cms")
+            return False
+        err, _ = call_microovn_command("config", "set", "ovn.central-ips", address)
         if err:
             logger.error("calling config set failed with code {0}".format(err))
             return False

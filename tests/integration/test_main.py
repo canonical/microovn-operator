@@ -170,25 +170,25 @@ def test_ovn_k8s_integration(juju: jubilant.Juju):
     juju_k8s.add_model(juju_k8s_model, cloud="mk8s")
     # just to ensure the juju variable is the right model, due to weird jubilant behavior
     juju_lxd = jubilant.Juju(model=juju_lxd_model)
-    juju_k8s.deploy("ovn-central-k8s", channel="24.03/stable")
-    juju_k8s.add_unit("ovn-central-k8s")
-    juju_k8s.add_unit("ovn-central-k8s")
+    juju_k8s.deploy("ovn-central-k8s", channel="24.03/stable", num_units=3)
+    juju_k8s.deploy("ovn-relay-k8s", channel="24.03/stable", num_units=3, trust=True)
+    juju_k8s.integrate("ovn-central-k8s", "ovn-relay-k8s")
     juju_k8s.cli("switch", juju_k8s_model, include_model=False)
-    juju_k8s.offer("ovn-central-k8s", endpoint="ovsdb-cms")
+    juju_k8s.offer("ovn-relay-k8s", endpoint="ovsdb-cms-relay")
     juju_k8s.integrate("ovn-central-k8s", "{}.self-signed-certificates".format(juju.model))
+    juju_k8s.integrate("ovn-relay-k8s", "{}.self-signed-certificates".format(juju.model))
     juju_lxd.cli("switch", juju_lxd_model, include_model=False)
-    juju_lxd.integrate("microovn", "{}.ovn-central-k8s".format(juju_k8s.model))
-    juju_k8s.wait(jubilant.all_active)
-    juju_lxd.wait(jubilant.all_active)
+    juju_lxd.integrate("microovn", "{}.ovn-relay-k8s".format(juju_k8s.model))
+    juju_k8s.wait(jubilant.all_active, timeout=300)
+    juju_lxd.wait(jubilant.all_active, timeout=300)
 
     # ensure microovn central is down
     output = juju_lxd.exec("microovn status", unit="microovn/0")
     assert "central" not in output.stdout
-    # test ovn-nbctl still works which means its using ovn-k8s
-    juju_lxd.exec("microovn.ovn-nbctl lr-add R1", unit="microovn/0")
-    # check ovn-nbctl is using the same database across units
-    output = juju_lxd.exec("microovn.ovn-nbctl show", unit="microovn/1")
-    assert "R1" in output.stdout
+    # test ovn-sbctl still works which means its using ovn-relay-k8s
+    juju_lxd.exec("microovn.ovn-sbctl --no-leader-only show", unit="microovn/0")
+    output = juju_lxd.exec("microovn.ovn-sbctl --no-leader-only show", unit="microovn/1")
+    assert output.stdout.count("Chassis") == 2  # We have 2 microovn units
 
     juju_k8s.cli("switch", juju_k8s_model, include_model=False)
     juju_k8s.destroy_model(juju_k8s.model, destroy_storage=True, force=True)
