@@ -54,24 +54,62 @@ jobs:
         run: make check-unit
 
   pack-microovn:
-    uses: canonical/microcluster-token-distributor-operator/.github/workflows/pack.yaml@main
+    uses: ./.github/workflows/_build_charm.yaml
     with:
-      name: microovn
-      path: microovn
+      path-to-charm-directory: microovn
+
+  pack-interface-consumer:
+    uses: ./.github/workflows/_build_charm.yaml
+    with:
+      path-to-charm-directory: tests/interface-consumer
+      pre-pack-hook: make charm-libs
+
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y python3-venv jq
+      - name: Discover individual tests
+        id: discover
+        run: |
+          make .venv
+          export MICROOVN_CHARM_PATH="filler"
+          export INTERFACE_CONSUMER_CHARM_PATH="filler"
+          tests=$(.venv/bin/pytest -q --collect-only tests/integration/ | grep ::test_ | jq -R -s -c 'split("\n")[:-1]')
+          echo $tests
+          echo "matrix={\"test\":$tests}" >> $GITHUB_OUTPUT
 
   test:
     runs-on: ubuntu-latest
     needs:
       - pack-microovn
+      - pack-interface-consumer
+      - setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: microovn
+          path: ./charms
+
       - name: Set charm paths
         run: |
-          set -- ${{ needs.pack-microovn.outputs.charms }}
-          echo "MICROOVN_CHARM_PATH=$1" >> $GITHUB_ENV
+          # Find each charm file by its expected prefix
+          MICROOVN_CHARM_PATH=$(find ./charms -type f -name 'microovn_*.charm' -print -quit)
+          INTERFACE_CONSUMER_CHARM_PATH=$(find ./charms -type f -name 'interface-consumer_*.charm' -print -quit)
+
+          echo "MICROOVN_CHARM_PATH=$MICROOVN_CHARM_PATH" >> $GITHUB_ENV
+          echo "INTERFACE_CONSUMER_CHARM_PATH=$INTERFACE_CONSUMER_CHARM_PATH" >> $GITHUB_ENV
+
+          echo "MicroOVN charm: $MICROOVN_CHARM_PATH"
+          echo "Interface consumer charm: $INTERFACE_CONSUMER_CHARM_PATH"
 
       - name: Install dependencies
         run: |
@@ -119,11 +157,5 @@ jobs:
           (r=30;while ! juju add-k8s mk8s --controller concierge-lxd ; do ((--r))||exit;sleep 2;done)
           sudo snap install charmcraft --classic
 
-      - name: Build interface consumer
-        working-directory: tests/interface-consumer
-        run: |
-          make build
-          echo "INTERFACE_CONSUMER_CHARM_PATH=tests/interface-consumer/interface-consumer_amd64.charm" >> $GITHUB_ENV
-
-      - name: Run test
-        run: make check-integration
+      - name: Run single test
+        run: make check-integration TESTSUITEFLAGS="${{ matrix.test }}"
