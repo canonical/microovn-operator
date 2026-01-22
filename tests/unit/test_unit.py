@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import subprocess
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import charm
 import charms.tls_certificates_interface.v4.tls_certificates as tls_certs
@@ -39,6 +39,9 @@ def test_install(mock_run):
         ["snap", "install", "microovn", "--channel", "latest/edge"], check=True
     )
     mock_run.assert_any_call(
+        ["snap", "install", "ovn-exporter", "--channel", "latest/stable"], check=True
+    )
+    mock_run.assert_any_call(
         ["microovn", "waitready"],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -50,10 +53,19 @@ def test_install(mock_run):
 @patch.object(charm.logger, "error")
 @patch.object(charm.logger, "debug")
 @patch.object(charm, "call_microovn_command")
+@patch.object(charm, "check_metrics_endpoint")
 @pytest.mark.parametrize("in_cluster", [True, False])
 @pytest.mark.parametrize("return_code", [0, 1])
 @pytest.mark.parametrize("services", ["central, switch, chassis", "switch, chassis"])
-def test_central_exists(mock_run, logger_debug, logger_error, in_cluster, return_code, services):
+def test_central_exists(
+    mock_check_metrics_endpoint,
+    microovn_command,
+    logger_debug,
+    logger_error,
+    in_cluster,
+    return_code,
+    services,
+):
     status_output = """
 MicroOVN deployment summary:
 - a (10.155.18.254)
@@ -63,7 +75,7 @@ OVN Northbound: OK (7.3.0)
 OVN Southbound: OK (20.33.0)
 """
     command_out = status_output.format(services)
-    mock_run.return_value = (return_code, command_out)
+    microovn_command.return_value = (return_code, command_out)
 
     ctx = testing.Context(charm.MicroovnCharm)
     with ctx(ctx.on.start(), testing.State()) as manager:
@@ -78,14 +90,15 @@ OVN Southbound: OK (20.33.0)
                 command_out
             )
         if in_cluster:
-            mock_run.assert_called_once_with("status")
+            microovn_command.assert_called_once_with("status")
         else:
-            mock_run.assert_not_called()
+            microovn_command.assert_not_called()
 
 
-@pytest.mark.parametrize("leader", [True, False])
 @patch.object(charm, "call_microovn_command")
-def test_dataplane_mode_passes(microovn_command, leader):
+@patch.object(charm, "check_metrics_endpoint")
+@pytest.mark.parametrize("leader", [True, False])
+def test_dataplane_mode_passes(mock_check, microovn_command, leader):
     ctx = testing.Context(charm.MicroovnCharm)
     ovsdb_relation = testing.Relation(
         "ovsdb-external",
@@ -112,8 +125,9 @@ def test_dataplane_mode_passes(microovn_command, leader):
 
 @patch.object(charm.logger, "error")
 @patch.object(charm, "call_microovn_command")
+@patch.object(charm, "check_metrics_endpoint")
 @pytest.mark.parametrize("return_code", [0, 1])
-def test_set_central_ips_config(microovn_command, logger_error, return_code):
+def test_set_central_ips_config(mock_check, microovn_command, logger_error, return_code):
     ctx = testing.Context(charm.MicroovnCharm)
     ovsdb_relation = testing.Relation(
         "ovsdb-external",
@@ -136,8 +150,11 @@ def test_set_central_ips_config(microovn_command, logger_error, return_code):
 
 @patch.object(charm.logger, "error")
 @patch.object(charm, "call_microovn_command")
+@patch.object(charm, "check_metrics_endpoint")
 @pytest.mark.parametrize("microovn_command_return_code", [0, 1])
-def test_on_ovsdbcms_broken_passes(microovn_command, logger_error, microovn_command_return_code):
+def test_on_ovsdbcms_broken_passes(
+    mock_check, microovn_command, logger_error, microovn_command_return_code
+):
     ctx = testing.Context(charm.MicroovnCharm)
     microovn_command.return_value = (microovn_command_return_code, "")
     with (
@@ -146,7 +163,7 @@ def test_on_ovsdbcms_broken_passes(microovn_command, logger_error, microovn_comm
     ):
         manager.charm.token_consumer._stored.in_cluster = True
         central_exists.return_value = False
-        manager.charm._on_ovsdbcms_broken(None)
+        manager.charm._on_ovsdbcms_broken(None)  # type: ignore
         microovn_command.assert_called_once_with("config", "delete", "ovn.central-ips")
         expected_status = ops.BlockedStatus(
             "microovn has no central nodes, this could either be due to a "
@@ -163,6 +180,7 @@ def test_on_ovsdbcms_broken_passes(microovn_command, logger_error, microovn_comm
 @patch.object(charm.logger, "debug")
 @patch.object(charm.logger, "info")
 @patch.object(charm, "call_microovn_command")
+@patch.object(charm, "check_metrics_endpoint")
 @pytest.mark.parametrize("find_cert", [True, False])
 @pytest.mark.parametrize("find_key", [True, False])
 @pytest.mark.parametrize("microovn_command_return_code", [0, 1])
@@ -170,6 +188,7 @@ def test_on_ovsdbcms_broken_passes(microovn_command, logger_error, microovn_comm
     "microovn_command_output", ["New CA certificate: Issued", "New CA certificate: Not Issued"]
 )
 def test_on_certs_available(
+    mock_check,
     microovn_command,
     logger_info,
     logger_debug,
@@ -195,23 +214,19 @@ def test_on_certs_available(
         priv_key = None
         provider_cert = None
         if find_cert:
-            provider_cert = tls_certs.ProviderCertificate(
-                relation_id=0,
-                ca=fake_ca,
-                certificate=fake_given_cert,
-                chain=[fake_given_cert, fake_ca],
-                certificate_signing_request=None,
-            )
+            provider_cert = MagicMock(spec=tls_certs.ProviderCertificate)
+            provider_cert.ca = fake_ca
+            provider_cert.certificate = fake_given_cert
         if find_key:
-            priv_key = tls_certs.PrivateKey(raw=fake_priv_key)
+            priv_key = MagicMock(spec=tls_certs.PrivateKey)
+            priv_key.__str__ = MagicMock(return_value=fake_priv_key)
         get_certs.return_value = (provider_cert, priv_key)
         microovn_command.return_value = (microovn_command_return_code, microovn_command_output)
         manager.charm.token_consumer._stored.in_cluster = True
 
         try:
-            output = manager.charm._on_certificates_available(None)
+            manager.charm._on_certificates_available(None)  # type: ignore
             if not (find_cert and find_key):
-                assert output is False
                 logger_info.assert_not_called()
                 logger_debug.assert_called_once_with("Certificate or private key is not available")
                 logger_error.assert_not_called()
@@ -223,12 +238,10 @@ def test_on_certs_available(
                     )
                     logger_debug.assert_not_called()
                     logger_error.assert_not_called()
-                    assert output is True
                 else:
                     logger_info.assert_not_called()
                     logger_debug.assert_not_called()
                     logger_error.assert_not_called()
-                    assert output is False
         except RuntimeError as e:
             assert (find_cert and find_key) and (microovn_command_return_code == 1)
             logger_info.assert_not_called()
@@ -246,3 +259,33 @@ def test_on_certs_available(
                 "--combined",
                 stdin="\n".join([fake_given_cert, fake_ca, fake_priv_key]),
             )
+
+
+@patch.object(charm, "call_microovn_command")
+@patch.object(charm, "check_metrics_endpoint")
+@pytest.mark.parametrize("metrics_reachable", [True, False])
+def test_update_status_check_metrics_endpoint(
+    mock_check_metrics_endpoint,
+    mock_microovn_command,
+    metrics_reachable,
+):
+    """Test _update_status checks metrics endpoint and sets appropriate status."""
+    mock_check_metrics_endpoint.return_value = metrics_reachable
+    mock_microovn_command.return_value = (0, "central, switch, chassis")
+
+    ctx = testing.Context(charm.MicroovnCharm)
+    state_in = testing.State()
+
+    with ctx(ctx.on.start(), state_in) as manager:
+        manager.charm.token_consumer._stored.in_cluster = False
+        manager.charm._update_status(None)  # type: ignore
+
+    expected_url = f"http://localhost:{charm.OVN_EXPORTER_PORT}{charm.OVN_EXPORTER_METRICS_PATH}"
+    mock_check_metrics_endpoint.assert_called_once_with(expected_url)
+
+    if metrics_reachable:
+        assert manager.charm.unit.status == ops.ActiveStatus()
+    else:
+        assert manager.charm.unit.status == ops.BlockedStatus(
+            "ovn-exporter metrics endpoint is not reachable"
+        )
