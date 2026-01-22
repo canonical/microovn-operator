@@ -1,31 +1,11 @@
 import json
-import os
 import time
 
 import jubilant
-
-
-def get_charm_from_env(env):
-    charm_path = "./" + os.environ.get(env)
-    if charm_path is None:
-        raise EnvironmentError("{0} is not set".format(env))
-    return charm_path
-
-
-def is_command_passing(juju, commandstring, unitname):
-    try:
-        juju.exec(commandstring, unit=unitname)
-        return True
-    except Exception as e:
-        print(e)
-        return False
-
+from helpers import get_charm_from_env, is_command_passing, tdist_channel, token_distributor_charm
 
 microovn_charm_path = get_charm_from_env("MICROOVN_CHARM_PATH")
 dummy_charm_path = get_charm_from_env("INTERFACE_CONSUMER_CHARM_PATH")
-
-token_distributor_charm = "microcluster-token-distributor"
-tdist_channel = "latest/edge"
 
 
 def test_integrate(juju: jubilant.Juju):
