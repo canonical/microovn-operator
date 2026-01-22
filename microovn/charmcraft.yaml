@@ -43,22 +43,10 @@ parts:
       - pkg-config
       - rustc-1.85
 
-config:
-  options:
-    log-level:
-      default: "info"
-      type: string
-
-requires:
-  cluster:
-    interface: worker-cluster
-    limit: 1
-
-  certificates:
-    interface: tls-certificates
-
 charm-libs:
   - lib: tls_certificates_interface.tls_certificates
     version: "4"
-  - lib: microcluster_token_distributor.token_distributor 
+  - lib: microcluster_token_distributor.token_distributor
     version: "0.1"
+  - lib: grafana_agent.cos_agent
+    version: "0"

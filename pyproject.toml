@@ -1,11 +1,14 @@
 [project]
 name = "microovn-operator"
 version = "1.0"
+requires-python = ">=3.12"
 dependencies = [
     "ops ~= 2.17",
     "cryptography==44.0.1",
     "maturin<1.1.0",
     "pydantic==2.9.1",
+    "requests",
+    "cosl",
 ]
 
 [project.optional-dependencies]
@@ -61,7 +64,8 @@ lint.per-file-ignores = {"tests/*" = ["D100","D101","D102","D103","D104"]}
 max-complexity = 10
 
 [tool.codespell]
-skip = "build,lib,venv,icon.svg,.tox,.git,.mypy_cache,.ruff_cache,.coverage"
+skip = "build,lib,venv,icon.svg,.tox,.git,.mypy_cache,.ruff_cache,.coverage,dashboards"
 
 [tool.pyright]
 include = ["src/**.py"]
+extraPaths = ["microovn/src", "microovn/lib"]

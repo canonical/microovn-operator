@@ -7,10 +7,13 @@ other charms it may need
 """
 
 import logging
+import socket
 import subprocess
 import time
 
 import ops
+import requests
+from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
 from charms.microovn.v0.ovsdb import OVSDBProvides
 from charms.ovn_central_k8s.v0.ovsdb import OVSDBCMSRequires
@@ -26,6 +29,12 @@ WORKER_RELATION = "cluster"
 CERTIFICATES_RELATION = "certificates"
 OVSDBCMD_RELATION = "ovsdb-external"
 MICROOVN_CHANNEL = "latest/edge"
+DASHBOARDS_DIR = "./src/dashboards"
+ALERT_RULES_DIR = "./src/alert_rules"
+OVN_EXPORTER_METRICS_PATH = "/metrics"
+OVN_EXPORTER_PORT = 9310
+OVN_EXPORTER_CHANNEL = "latest/stable"
+
 
 CSR_ATTRIBUTES = CertificateRequestAttributes(
     common_name="Charmed MicroOVN",
@@ -45,6 +54,21 @@ def call_microovn_command(*args, stdin=None):
     return result.returncode, result.stdout
 
 
+def check_metrics_endpoint(url: str):
+    """Check if the metrics endpoint is reachable."""
+    retries = 3
+    while retries:
+        try:
+            response = requests.get(url, timeout=2)
+            return response.status_code == 200
+        except requests.RequestException:
+            logger.warning("metrics endpoint %s is not reachable yet.", url)
+            retries -= 1
+            if retries:
+                time.sleep(1)
+    return False
+
+
 class MicroovnCharm(ops.CharmBase):
     """The implementation of the majority of the charms logic."""
 
@@ -52,6 +76,7 @@ class MicroovnCharm(ops.CharmBase):
 
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
+
         self.certificates = TLSCertificatesRequiresV4(
             charm=self,
             relationship_name=CERTIFICATES_RELATION,
@@ -72,6 +97,24 @@ class MicroovnCharm(ops.CharmBase):
             charm=self,
             relation_name=OVSDBCMD_RELATION,
             external_connectivity=True,
+        )
+
+        self.cos = COSAgentProvider(
+            self,
+            scrape_configs=[
+                {
+                    "metrics_path": OVN_EXPORTER_METRICS_PATH,
+                    "static_configs": [
+                        {
+                            "targets": [f"localhost:{OVN_EXPORTER_PORT}"],
+                            "labels": {"instance": socket.getfqdn()},
+                        }
+                    ],
+                }
+            ],
+            metrics_rules_dir=ALERT_RULES_DIR,
+            dashboard_dirs=[DASHBOARDS_DIR],
+            refresh_events=[self.on.config_changed],
         )
 
         framework.observe(self.on.install, self._on_install)
@@ -153,12 +196,20 @@ class MicroovnCharm(ops.CharmBase):
                 "microovn has no central nodes, this could either be due to a "
                 + "recently broken ovsdb-cms relation or a configuration issue"
             )
+            return
+
+        url = f"http://localhost:{OVN_EXPORTER_PORT}{OVN_EXPORTER_METRICS_PATH}"
+        if not check_metrics_endpoint(url):
+            self.unit.status = ops.BlockedStatus("ovn-exporter metrics endpoint is not reachable")
+            return
+
+        self.unit.status = ops.ActiveStatus()
 
     def _on_ovsdbcms_broken(self, _: ops.EventBase):
-        err, output = call_microovn_command("config", "delete", "ovn.central-ips")
-        self._update_status(None)
+        err, __ = call_microovn_command("config", "delete", "ovn.central-ips")
         if err:
             logger.error("microovn config delete failed with error code {0}".format(err))
+        self._update_status(None)  # type: ignore
 
     def _on_ovsdbcms_ready(self, _: ops.EventBase):
         self._dataplane_mode()
@@ -173,14 +224,14 @@ class MicroovnCharm(ops.CharmBase):
         """
         if not self.token_consumer._stored.in_cluster:
             event.defer()
-            return False
+            return
 
         provider_certificate, private_key = self.certificates.get_assigned_certificate(
             certificate_request=CSR_ATTRIBUTES
         )
         if not provider_certificate or not private_key:
             logger.debug("Certificate or private key is not available")
-            return False
+            return
         combined_cert = str(provider_certificate.certificate) + "\n" + str(provider_certificate.ca)
         combined_input = combined_cert + "\n" + str(private_key)
         err, output = call_microovn_command(
@@ -191,28 +242,13 @@ class MicroovnCharm(ops.CharmBase):
             raise RuntimeError("Updating certificates failed with error code {0}".format(err))
         if "New CA certificate: Issued" in output:
             logger.info("CA certificate updated, new certificates issued")
-            return True
 
-        return False
-
-    def _on_install(self, event: ops.InstallEvent):
+    def _on_install(self, _: ops.InstallEvent):
         self.unit.status = ops.MaintenanceStatus("Installing microovn snap")
-        while retries := 3:
-            try:
-                subprocess.run(["snap", "wait", "system", "seed.loaded"], check=True)
-                subprocess.run(
-                    ["snap", "install", "microovn", "--channel", MICROOVN_CHANNEL], check=True
-                )
-                break
-            except subprocess.CalledProcessError as e:
-                if retries:
-                    retries -= 1
-                    self.unit.status = ops.MaintenanceStatus(
-                        f"Snap install failed, {retries} retries left"
-                    )
-                    time.sleep(1)
-                    continue
-                raise e
+        self._install_snap("microovn", MICROOVN_CHANNEL)
+        self.unit.status = ops.MaintenanceStatus("Installing ovn-exporter snap")
+        self._install_snap("ovn-exporter", OVN_EXPORTER_CHANNEL)
+        self._setup_exporter()
 
         self.unit.status = ops.MaintenanceStatus("Waiting for microovn ready")
         retries = 0
@@ -227,9 +263,57 @@ class MicroovnCharm(ops.CharmBase):
             time.sleep(1)
 
     def _on_cluster_changed(self, event: ops.RelationChangedEvent):
-        if self.token_consumer._stored.in_cluster:
+        if self.token_consumer._stored.in_cluster and self.ovsdb_provides:
             self.ovsdb_provides.update_relation_data()
             self._dataplane_mode()
+
+    def _install_snap(self, snap_name: str, channel: str):
+        retries = 3
+        while retries:
+            try:
+                subprocess.run(["snap", "wait", "system", "seed.loaded"], check=True)
+                subprocess.run(["snap", "install", snap_name, "--channel", channel], check=True)
+                break
+            except subprocess.CalledProcessError as e:
+                retries -= 1
+                if retries:
+                    logger.error("Failed to install %s: %s", snap_name, str(e))
+                    self.unit.status = ops.MaintenanceStatus(
+                        f"{snap_name} snap install failed, {retries} retries left"
+                    )
+                    time.sleep(1)
+                    continue
+                raise e
+
+    def _setup_exporter(self):
+        retries = 3
+        while retries:
+            try:
+                subprocess.run(
+                    ["snap", "connect", "ovn-exporter:ovn-chassis", "microovn:ovn-chassis"],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        "snap",
+                        "connect",
+                        "ovn-exporter:ovn-central-data",
+                        "microovn:ovn-central-data",
+                    ],
+                    check=True,
+                )
+                subprocess.run(["snap", "restart", "ovn-exporter.ovn-exporter"], check=True)
+                break
+            except subprocess.CalledProcessError as e:
+                retries -= 1
+                if retries:
+                    logger.error("Failed to configure ovn-exporter %s", str(e))
+                    self.unit.status = ops.MaintenanceStatus(
+                        f"ovn-exporter configuration failed, {retries} retries left"
+                    )
+                    time.sleep(1)
+                    continue
+                raise e
 
 
 if __name__ == "__main__":  # pragma: nocover

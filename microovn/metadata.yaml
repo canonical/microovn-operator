@@ -24,3 +24,6 @@ requires:
 provides:
   ovsdb:
     interface: ovsdb
+  cos-agent:
+    interface: cos_agent
+    optional: true
