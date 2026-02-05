@@ -278,6 +278,25 @@ files = [
 ]
 
 [[package]]
+name = "cosl"
+version = "1.4.0"
+description = "Utils for COS Lite charms"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "cosl-1.4.0-py3-none-any.whl", hash = "sha256:410042805b17876c19d405ff5bf5c2461a84a7bff389ce3ad928f44e8c09b882"},
+    {file = "cosl-1.4.0.tar.gz", hash = "sha256:eb6ebf682f76eec24e3c9759fb6fe5185660fcf7bb3dd8adc42e5a74816c8615"},
+]
+
+[package.dependencies]
+ops = "*"
+pydantic = "*"
+pyyaml = "*"
+tenacity = "*"
+typing-extensions = "*"
+
+[[package]]
 name = "coverage"
 version = "7.13.2"
 description = "Code coverage measurement for Python"
@@ -1129,4 +1148,4 @@ dev = ["codespell", "coverage", "jubilant", "ops", "pyright", "pytest", "pytest-
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "80bacbaf89f88a06d06335b6dd17800d8f481ec8b90a261ca58d44afe7e332bf"
+content-hash = "d5da0ba7280149efbee9eee0439cdc5faa72a155acfee8c94b588097b8356842"

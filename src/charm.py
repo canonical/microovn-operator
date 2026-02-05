@@ -9,18 +9,27 @@ other charms it may need
 """
 
 import logging
+import socket
 from functools import cached_property
 
 import ops
+from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
 from charms.microovn.v0.ovsdb import OVSDBProvides
 from charms.ovn_central_k8s.v0.ovsdb import OVSDBCMSRequires
 from charms.tls_certificates_interface.v4.tls_certificates import Mode, TLSCertificatesRequiresV4
 
 from constants import (
+    ALERT_RULES_DIR,
     CERTIFICATES_RELATION,
     CSR_ATTRIBUTES,
+    DASHBOARDS_DIR,
     MICROOVN_CHANNEL,
+    OVN_EXPORTER_CHANNEL,
+    OVN_EXPORTER_METRICS_ENDPOINT,
+    OVN_EXPORTER_METRICS_PATH,
+    OVN_EXPORTER_PLUGS,
+    OVN_EXPORTER_PORT,
     OVSDB_RELATION,
     OVSDBCMD_RELATION,
     WORKER_RELATION,
@@ -28,6 +37,7 @@ from constants import (
 from snap_manager import SnapManager
 from utils import (
     call_microovn_command,
+    check_metrics_endpoint,
     microovn_central_exists,
     wait_for_microovn_ready,
 )
@@ -63,6 +73,24 @@ class MicroovnCharm(ops.CharmBase):
             external_connectivity=True,
         )
 
+        self.cos = COSAgentProvider(
+            self,
+            scrape_configs=[
+                {
+                    "metrics_path": OVN_EXPORTER_METRICS_PATH,
+                    "static_configs": [
+                        {
+                            "targets": [f"localhost:{OVN_EXPORTER_PORT}"],
+                            "labels": {"instance": socket.getfqdn()},
+                        }
+                    ],
+                }
+            ],
+            metrics_rules_dir=ALERT_RULES_DIR,
+            dashboard_dirs=[DASHBOARDS_DIR],
+            refresh_events=[self.on.config_changed],
+        )
+
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on[WORKER_RELATION].relation_changed, self._on_cluster_changed)
         framework.observe(self.on.update_status, self._on_update_status)
@@ -73,6 +101,8 @@ class MicroovnCharm(ops.CharmBase):
         )
         framework.observe(self.ovsdbcms_requires.on.ready, self._on_ovsdbcms_ready)
         framework.observe(self.ovsdbcms_requires.on.goneaway, self._on_ovsdbcms_broken)
+        framework.observe(self.token_consumer.on.bootstrapped, self._on_bootstrapped_or_joined)
+        framework.observe(self.token_consumer.on.joined, self._on_bootstrapped_or_joined)
 
     # PROPERTIES
 
@@ -80,6 +110,11 @@ class MicroovnCharm(ops.CharmBase):
     def microovn_snap_client(self) -> SnapManager:  # pragma: nocover
         """Return the snap client."""
         return SnapManager("microovn", MICROOVN_CHANNEL)
+
+    @cached_property
+    def ovn_exporter_snap_client(self) -> SnapManager:  # pragma: nocover
+        """Return the snap client."""
+        return SnapManager("ovn-exporter", OVN_EXPORTER_CHANNEL)
 
     @property
     def is_in_cluster(self) -> bool:
@@ -107,6 +142,12 @@ class MicroovnCharm(ops.CharmBase):
                     "microovn has no central nodes, this could either be due to a "
                     "recently broken ovsdb-cms relation or a configuration issue"
                 )
+            )
+            return
+
+        if self.is_in_cluster and not check_metrics_endpoint(OVN_EXPORTER_METRICS_ENDPOINT):
+            self.unit.status = ops.BlockedStatus(
+                "ovn-exporter metrics endpoint is not responding, check snap service status"
             )
             return
 
@@ -172,13 +213,19 @@ class MicroovnCharm(ops.CharmBase):
 
     def _on_install(self, event: ops.EventBase) -> None:
         """Handle the install event."""
-        snaps = [self.microovn_snap_client]
+        snaps = [self.ovn_exporter_snap_client, self.microovn_snap_client]
 
         for snap in snaps:
             self.unit.status = ops.MaintenanceStatus(f"Installing {snap.name} snap")
             if not snap.install():
                 logger.error("Failed to install %s snap", snap.name)
                 raise RuntimeError(f"Failed to install {snap.name} snap")
+
+        # Stop the services until microovn is bootstrapped
+        self.ovn_exporter_snap_client.disable_and_stop()
+        if not self.ovn_exporter_snap_client.connect(OVN_EXPORTER_PLUGS):
+            logger.error("Failed to connect ovn-exporter snap interfaces")
+            raise RuntimeError("Failed to connect ovn-exporter snap interfaces")
 
         self.unit.status = ops.MaintenanceStatus("Waiting for microovn ready")
         if not wait_for_microovn_ready():
@@ -202,13 +249,18 @@ class MicroovnCharm(ops.CharmBase):
     def _on_remove(self, _: ops.EventBase) -> None:
         """Handle the remove event."""
         self.unit.status = ops.MaintenanceStatus("Cleanup")
-        snaps = [self.microovn_snap_client]
+        snaps = [self.ovn_exporter_snap_client, self.microovn_snap_client]
 
         for snap in snaps:
             self.unit.status = ops.MaintenanceStatus(f"Removing {snap.name} snap")
             if not snap.remove():
                 logger.error("Remove failed for %s", snap.name)
                 raise RuntimeError(f"Failed to remove {snap.name} snap")
+
+    def _on_bootstrapped_or_joined(self, _: ops.EventBase):
+        """Handle bootstrapped event."""
+        logger.info("microovn cluster was bootstrapped or joined, enabling the exporter")
+        self.ovn_exporter_snap_client.enable_and_start()
 
     # HELPERS
 

@@ -11,6 +11,7 @@ dependencies = [
     "pydantic",
     "requests",
     "tenacity",
+    "cosl",
 ]
 
 [project.optional-dependencies]

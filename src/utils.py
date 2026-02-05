@@ -6,6 +6,7 @@
 import logging
 import subprocess
 
+import requests
 from tenacity import retry, retry_if_result, stop_after_attempt, wait_fixed
 
 logger = logging.getLogger(__name__)
@@ -48,3 +49,23 @@ def microovn_central_exists() -> bool:
             result.returncode, "microovn status", result.stdout, result.stderr
         )
     return "central" in result.stdout
+
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_fixed(2),
+    retry=retry_if_result(lambda x: x is False),
+    retry_error_callback=(lambda state: state.outcome.result()),  # type: ignore
+)
+def check_metrics_endpoint(url: str) -> bool:
+    """Check if the metrics endpoint is reachable.
+
+    Returns:
+        bool: True if the metrics endpoint is reachable, False otherwise.
+    """
+    try:
+        response = requests.get(url, timeout=2)
+        return response.status_code == 200
+    except requests.RequestException:
+        logger.warning("Metrics endpoint %s is not reachable yet.", url)
+        return False

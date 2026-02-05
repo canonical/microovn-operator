@@ -59,6 +59,8 @@ charm-libs:
     version: "0.1"
   - lib: operator-libs-linux.snap
     version: "2"
+  - lib: grafana_agent.cos_agent
+    version: "0"
 
 requires:
   cluster:
@@ -72,3 +74,6 @@ requires:
 provides:
   ovsdb:
     interface: ovsdb
+  cos-agent:
+    interface: cos_agent
+    optional: true
