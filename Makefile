@@ -2,7 +2,7 @@
 # See LICENSE file for licensing details.
 
 VENV := .venv
-PARALLEL ?= 1
+PARALLEL ?= 0
 TESTSUITEFLAGS ?= ""
 CHARMFILE := microovn_ubuntu@24.04-amd64.charm
 OVSDBLIB := lib/charms/microovn/v0/ovsdb.py
