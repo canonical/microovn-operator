@@ -1,17 +1,25 @@
-# This file configures Charmcraft.
-# See https://juju.is/docs/sdk/charmcraft-config for guidance.
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
 
-# (Required)
 type: charm
 
-
-# (Recommended)
 title: MicroOVN Charm
+
+name: microovn
+summary: A thin layer around MicroOVN, to allow it to be used as a charm
+description: |
+  A thin layer over the software defined networking project MicroOVN.
+  This is a machine charm that primarily allows MicroOVN to be used easily within
+  Juju, enabling its many ease-of-use features to integrate with the charm ecosystem.
+
+  This charm is still under development.
+
+maintainers:
+  - OVN Engineering <ubuntu-ovn-eng@lists.launchpad.net>
 
 links:
   source: https://github.com/canonical/microovn-operator
 
-# (Required for 'charm' type)
 platforms:
   ubuntu@24.04:amd64:
   ubuntu@24.04:arm64:
@@ -44,21 +52,23 @@ parts:
       - rustc-1.85
 
 config:
-  options:
-    log-level:
-      default: "info"
-      type: string
+  options: {}
+
+charm-libs:
+  - lib: tls_certificates_interface.tls_certificates
+    version: "4"
+  - lib: microcluster_token_distributor.token_distributor
+    version: "0.1"
 
 requires:
   cluster:
     interface: worker-cluster
     limit: 1
-
   certificates:
     interface: tls-certificates
+  ovsdb-external:
+    interface: ovsdb-cms
 
-charm-libs:
-  - lib: tls_certificates_interface.tls_certificates
-    version: "4"
-  - lib: microcluster_token_distributor.token_distributor 
-    version: "0.1"
+provides:
+  ovsdb:
+    interface: ovsdb

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2025 Ubuntu
+# See LICENSE file for licensing details.
+
 import logging
 import os
 from pathlib import Path

@@ -3,11 +3,12 @@
 import subprocess
 from unittest.mock import patch
 
-import charm
 import charms.tls_certificates_interface.v4.tls_certificates as tls_certs
 import ops
 import pytest
 from ops import testing
+
+import charm
 
 
 @patch.object(charm.subprocess, "run")

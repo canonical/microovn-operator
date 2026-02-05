@@ -1,28 +1,41 @@
+# Copyright 2025 Ubuntu
+# See LICENSE file for licensing details.
+
 VENV := .venv
 PARALLEL ?= 1
 TESTSUITEFLAGS ?= ""
-PYTHON := $(VENV)/bin/python
-PIP := $(VENV)/bin/pip
-CHARMS := microovn tests/interface-consumer
+CHARMFILE := microovn_ubuntu@24.04-amd64.charm
+OVSDBLIB := lib/charms/microovn/v0/ovsdb.py
+TOKENDISTLIB := lib/charms/microcluster_token_distributor/v0/token_distributor.py
 
-build:
-	for charm in $(CHARMS); do \
-		$(MAKE) -C $$charm; \
-	done
+# Virtual environment
+$(VENV): poetry.lock pyproject.toml
+	poetry install --extras dev
 
-$(VENV):
-	python3 -m venv $(VENV) --upgrade-deps
-	$(PIP) install -r tests/requirements.txt
+# Build targets
+build: $(CHARMFILE)
 
-get-microovn-libs:
-	$(MAKE) -C microovn charm-libs
+$(CHARMFILE): src/charm.py charmcraft.yaml charm-libs
+	charmcraft pack -v
+
+build-consumer:
+	$(MAKE) -C tests/interface-consumer
+
+build-all: build build-consumer
+
+# Charm libs targets
+$(TOKENDISTLIB):
+	charmcraft fetch-lib microcluster_token_distributor.token_distributor
+
+charm-libs: $(TOKENDISTLIB) $(OVSDBLIB)
 
 get-consumer-libs:
 	$(MAKE) -C tests/interface-consumer charm-libs
 
-get-libs: get-microovn-libs get-consumer-libs
+get-libs: charm-libs get-consumer-libs
 
-check-lint: get-libs 
+# Check targets
+check-lint: get-libs
 	tox -e lint
 
 check-code: check-lint
@@ -30,17 +43,18 @@ check-code: check-lint
 check-unit: get-libs
 	tox -e unit
 
-check-integration: $(VENV)
-	./$(VENV)/bin/pytest -v -n $(PARALLEL) $(TESTSUITEFLAGS)
+check-integration:
+	tox -e integration -- -n $(PARALLEL) $(TESTSUITEFLAGS)
 
 check-system: check-integration check-unit
 
 check: check-code check-system
 
-test: $(VENV) check-system
+test: check-system
 .PHONY: test
 
+# Clean targets
 clean:
-	for charm in $(CHARMS); do \
-		$(MAKE) -C $$charm clean; \
-	done
+	charmcraft clean
+	rm -f $(CHARMFILE)
+	$(MAKE) -C tests/interface-consumer clean
