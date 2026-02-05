@@ -1,4 +1,4 @@
-# Copyright 2025 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
 type: charm
@@ -12,13 +12,11 @@ description: |
   This is a machine charm that primarily allows MicroOVN to be used easily within
   Juju, enabling its many ease-of-use features to integrate with the charm ecosystem.
 
-  This charm is still under development.
-
-maintainers:
-  - OVN Engineering <ubuntu-ovn-eng@lists.launchpad.net>
-
 links:
+  contact: OVN Engineering <ubuntu-ovn-eng@lists.launchpad.net>
   source: https://github.com/canonical/microovn-operator
+  issues: https://github.com/canonical/microovn-operator/issues
+  website: https://charmhub.io/microovn
 
 platforms:
   ubuntu@24.04:amd64:
@@ -59,6 +57,8 @@ charm-libs:
     version: "4"
   - lib: microcluster_token_distributor.token_distributor
     version: "0.1"
+  - lib: operator-libs-linux.snap
+    version: "2"
 
 requires:
   cluster:

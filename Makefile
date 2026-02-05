@@ -1,4 +1,4 @@
-# Copyright 2025 Ubuntu
+# Copyright 2026 Ubuntu
 # See LICENSE file for licensing details.
 
 VENV := .venv
@@ -7,15 +7,16 @@ TESTSUITEFLAGS ?= ""
 CHARMFILE := microovn_ubuntu@24.04-amd64.charm
 OVSDBLIB := lib/charms/microovn/v0/ovsdb.py
 TOKENDISTLIB := lib/charms/microcluster_token_distributor/v0/token_distributor.py
+SRC_FILES := src/charm.py src/constants.py src/snap_manager.py src/utils.py
 
 # Virtual environment
 $(VENV): poetry.lock pyproject.toml
-	poetry install --extras dev
+	POETRY_VIRTUALENVS_IN_PROJECT=true poetry install --extras dev
 
 # Build targets
 build: $(CHARMFILE)
 
-$(CHARMFILE): src/charm.py charmcraft.yaml charm-libs
+$(CHARMFILE): charmcraft.yaml charm-libs $(SRC_FILES)
 	charmcraft pack -v
 
 build-consumer:

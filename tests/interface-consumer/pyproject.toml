@@ -1,4 +1,4 @@
-# Copyright 2025 Ubuntu
+# Copyright 2026 Ubuntu
 # See LICENSE file for licensing details.
 
 [project]
@@ -7,6 +7,7 @@ version ="1.0"
 requires-python = ">=3.12"
 dependencies = [
     "ops>=3.5.0",
+    "cryptography",
     "pydantic",
 ]
 

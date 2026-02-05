@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2025 Ubuntu
+# Copyright 2026 Ubuntu
 # See LICENSE file for licensing details.
 
 import logging
@@ -28,8 +28,6 @@ CSR_ATTRIBUTES = CertificateRequestAttributes(
 
 
 class InterfaceConsumerCharm(ops.CharmBase):
-    ovsdb_requires = None
-
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
         framework.observe(self.on.ovsdb_relation_created, self._on_ovsdb_created)
@@ -64,30 +62,27 @@ class InterfaceConsumerCharm(ops.CharmBase):
         if not provider_certificate or not private_key:
             logger.debug("Certificate or private key is not available")
             return
-        cert_updated = self._store_certificate(certificate=provider_certificate.certificate)
-        ca_updated = self._store_ca(certificate=provider_certificate.ca)
-        key_updated = self._store_private_key(private_key=private_key)
-        return key_updated or cert_updated or ca_updated
+        self._store_certificate(certificate=provider_certificate.certificate)
+        self._store_ca(certificate=provider_certificate.ca)
+        self._store_private_key(private_key=private_key)
+        logger.info("Certificates and private key stored successfully")
 
-    def _store_ca(self, certificate: Certificate) -> bool:
+    def _store_ca(self, certificate: Certificate) -> None:
         """Store ca certificate in workload."""
         with open(self.ca_dir / CA_NAME, "w") as cert_file:
             cert_file.write(str(certificate))
         logger.info("Pushed CA certificate pushed to workload")
-        return True
 
-    def _store_certificate(self, certificate: Certificate) -> bool:
+    def _store_certificate(self, certificate: Certificate) -> None:
         """Store certificate in workload."""
         with open(self.ca_dir / CERTIFICATE_NAME, "w") as cert_file:
             cert_file.write(str(certificate))
         logger.info("Pushed certificate pushed to workload")
-        return True
 
-    def _store_private_key(self, private_key: PrivateKey) -> bool:
+    def _store_private_key(self, private_key: PrivateKey) -> None:
         with open(self.ca_dir / PRIVATE_KEY_NAME, "w") as key_file:
             key_file.write(str(private_key))
         logger.info("Pushed private key to workload")
-        return True
 
 
 if __name__ == "__main__":  # pragma: nocover
