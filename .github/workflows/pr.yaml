@@ -60,6 +60,7 @@ jobs:
     uses: ./.github/workflows/_build_charm.yaml
     with:
       path-to-charm-directory: .
+      cache: false
 
   pack-interface-consumer:
     name: Pack interface consumer charm
