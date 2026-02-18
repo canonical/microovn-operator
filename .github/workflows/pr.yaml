@@ -12,7 +12,7 @@ jobs:
 
   codeql:
     name: CodeQL analysis
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       security-events: write
       actions: read
@@ -29,42 +29,48 @@ jobs:
 
   code-checks:
     name: Code Checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Tox
+      - name: Install dependencies
         run: |
-          sudo snap install astral-uv --classic
-          uv tool install tox --with tox-uv
+            sudo apt-get update
+            sudo apt-get install -y python3-pip tox
+            pip install poetry==2.2.1
       - name: Check Code
         run: make check-code
 
   unit-tests:
-    name: Unit Tests 
-    runs-on: ubuntu-24.04
+    name: Unit Tests
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Tox
+      - name: Install dependencies
         run: |
-          sudo snap install astral-uv --classic
-          uv tool install tox --with tox-uv
+            sudo apt-get update
+            sudo apt-get install -y python3-pip tox
+            pip install poetry==2.2.1
       - name: Run Unit Tests
         run: make check-unit
 
   pack-microovn:
+    name: Pack MicroOVN charm
     uses: ./.github/workflows/_build_charm.yaml
     with:
-      path-to-charm-directory: microovn
+      path-to-charm-directory: .
+      cache: false
 
   pack-interface-consumer:
+    name: Pack interface consumer charm
     uses: ./.github/workflows/_build_charm.yaml
     with:
       path-to-charm-directory: tests/interface-consumer
       pre-pack-hook: make charm-libs
 
   setup:
+    name: Setup tests
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
@@ -73,18 +79,18 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3-venv jq
+          sudo apt install -y python3-venv jq python3-pip
+          pip install poetry==2.2.1
       - name: Discover individual tests
         id: discover
         run: |
           make .venv
-          export MICROOVN_CHARM_PATH="filler"
-          export INTERFACE_CONSUMER_CHARM_PATH="filler"
           tests=$(.venv/bin/pytest -q --collect-only tests/integration/ | grep ::test_ | jq -R -s -c 'split("\n")[:-1]')
           echo $tests
           echo "matrix={\"test\":$tests}" >> $GITHUB_OUTPUT
 
   test:
+    name: Run integration tests
     runs-on: ubuntu-latest
     needs:
       - pack-microovn
@@ -114,18 +120,20 @@ jobs:
       - name: Install dependencies
         run: |
           sudo snap install concierge --classic
+          sudo apt-get update
+          sudo apt-get install -y python3-pip tox
+          pip install poetry==2.2.1
 
-      - name: Prepare Environment for functional tests
+      - name: Prepare Environment
         run: |
-          # Use concierge to setup LXD, microk8s and bootstrap juju controller
-          cat <<EOF >>/tmp/concierge.yaml
+          cat <<EOF > /tmp/concierge.yaml
           juju:
             channel: 3.6/stable
 
           providers:
             microk8s:
               enable: true
-              bootstrap: false
+              bootstrap: true
               addons:
                 - dns
                 - hostpath-storage
@@ -136,26 +144,7 @@ jobs:
               bootstrap: true
           EOF
 
-          # Workaround for canonical/concierge#75
-          sudo snap install microk8s --channel 1.32-strict/stable
-          sudo mkdir -p /var/snap/microk8s/current/args/certs.d/docker.io
-          cat <<EOF | sudo tee /var/snap/microk8s/current/args/certs.d/docker.io/hosts.toml
-          server = "$DOCKERHUB_MIRROR"
-          [host."$DOCKERHUB_MIRROR"]
-          capabilities = ["pull", "resolve"]
-          EOF
-          sudo microk8s stop
-          sudo microk8s start
-
           sudo concierge prepare -c /tmp/concierge.yaml
 
-          # Add microk8s as a kubernetes substrate to the Juju controller
-          sudo microk8s status --wait
-          # The kubernetes API is not always immediately available to use, even if
-          # microk8s status reports ready state. These retries ensure that we don't
-          # fail the test unnecessarily
-          (r=30;while ! juju add-k8s mk8s --controller concierge-lxd ; do ((--r))||exit;sleep 2;done)
-          sudo snap install charmcraft --classic
-
-      - name: Run single test
+      - name: Run tests
         run: make check-integration TESTSUITEFLAGS="${{ matrix.test }}"

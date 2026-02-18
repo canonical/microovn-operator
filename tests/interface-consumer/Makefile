@@ -1,13 +1,16 @@
+# Copyright 2026 Ubuntu
+# See LICENSE file for licensing details.
+
 CHARMFILE := interface-consumer_amd64.charm
 build: $(CHARMFILE)
 
-lib/charms/microovn/v0/ovsdb.py: ../../microovn/lib/charms/microovn/v0/ovsdb.py
+lib/charms/microovn/v0/ovsdb.py: ../../lib/charms/microovn/v0/ovsdb.py
 	mkdir -p lib/charms/microovn/
-	cp -r ../../microovn/lib/charms/microovn/v0/ lib/charms/microovn/
+	cp -r ../../lib/charms/microovn/v0/ lib/charms/microovn/
 
-lib/charms/tls_certificates_interface/v4/tls_certificates.py: ../../microovn/lib/charms/tls_certificates_interface/v4/tls_certificates.py
+lib/charms/tls_certificates_interface/v4/tls_certificates.py: ../../lib/charms/tls_certificates_interface/v4/tls_certificates.py
 	mkdir -p lib/charms/tls_certificates_interface
-	cp -r ../../microovn/lib/charms/tls_certificates_interface/v4/ lib/charms/tls_certificates_interface/
+	cp -r ../../lib/charms/tls_certificates_interface/v4/ lib/charms/tls_certificates_interface/
 
 poetry.lock: pyproject.toml
 	poetry lock

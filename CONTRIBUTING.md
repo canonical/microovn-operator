@@ -1,32 +1,85 @@
 # Contributing
 
-To make contributions to this charm, you'll need a working development setup.
+## Development Setup
 
-The [concierge](https://github.com/canonical/concierge) utility may be useful
-to get you started quickly:
+This project uses [Poetry](https://python-poetry.org/) for dependency management.
+Install Poetry and set up the development environment:
 
 ```shell
-sudo snap install --classic concierge
-sudo concierge prepare -p machine
+pip install poetry==2.2.1
+make .venv
+```
+
+You'll also need `tox` for running tests:
+
+```shell
+sudo apt-get install -y tox
 ```
 
 ## Testing
 
-We have Unit tests and standard linting tests, to run these you need to set up 
-uv and tox, this is easily done like so:
+### Linting and Code Checks
+
+Linting and other code checks are done as part of the `check-code` target:
 
 ```shell
-snap install astral-uv --classic
-uv tool install tox --with tox-uv 
+make check-code
 ```
 
-Linting and other code checks are done as part of the ``check-code`` target. 
-Unit tests are a part of the `check-system` target, however they can be run on 
-their own with the `check-unit` target.
+### Unit Tests
+
+Unit tests can be run with the `check-unit` target:
+
+```shell
+make check-unit
+```
+
+### Integration Tests
 
 Integration tests are implemented using the
-[Jubilant](https://github.com/canonical/jubilant) framework, and can be
-executed using the `check-system` or `check-integration` targets:
+[Jubilant](https://github.com/canonical/jubilant) framework.
+
+#### Prerequisites
+
+You can set the environment up using [concierge](https://github.com/canonical/concierge) utility
+to get started quickly:
+
+```shell
+cat <<EOF > /tmp/concierge.yaml
+juju:
+  channel: 3.6/stable
+
+providers:
+  microk8s:
+    enable: true
+    bootstrap: true
+    addons:
+      - dns
+      - hostpath-storage
+      - metallb
+
+  lxd:
+    enable: true
+    bootstrap: true
+EOF
+
+sudo concierge prepare -c /tmp/concierge.yaml
+```
+
+You can customize the test environment using these optional environment variables:
+
+- `LXD_CONTROLLER`: Name of the LXD Juju controller (default: `concierge-lxd`)
+- `K8S_CONTROLLER`: Name of the MicroK8s Juju controller (default: `concierge-microk8s`)
+- `MICROOVN_CHARM_PATH`: Path to a pre-built microovn charm (default: auto-detected from cwd)
+- `INTERFACE_CONSUMER_CHARM_PATH`: Path to a pre-built interface-consumer charm (default: auto-detected from `tests/interface-consumer/`)
+
+If you're not using `concierge` to set up your test environment, you can use the
+`LXD_CONTROLLER` and `K8S_CONTROLLER` variables to point to your existing Juju
+controllers.
+
+#### Running Integration Tests
+
+Execute integration tests using the `check-integration` target:
 
 ```shell
 make check-integration
@@ -36,18 +89,25 @@ Optionally tests may be run in parallel, for environments with sufficient
 resources:
 
 ```shell
-make check-system PARALLEL=4
+make check-integration PARALLEL=4
 ```
 
 In the event of failure, you may also instruct the test suite to keep
-temporarily created models for further investigation.
+temporarily created models for further investigation:
 
 ```shell
-make check-system TESTSUITEFLAGS=--keep-models
+make check-integration TESTSUITEFLAGS=--keep-models
 ```
 
-Finally, we have the `test` target that runs code tests, unit tests and 
-integration tests.
+### Running All Tests
+
+The `check-system` target runs both unit and integration tests:
+
+```shell
+make check-system PARALLEL=4
+```
+
+The `test` target runs code checks, unit tests, and integration tests:
 
 ```shell
 make test PARALLEL=4 TESTSUITEFLAGS=--keep-models
@@ -58,7 +118,7 @@ make test PARALLEL=4 TESTSUITEFLAGS=--keep-models
 Build the charms in this git repository using:
 
 ```shell
-make
+make build-all
 ```
 
 ## Clean the build environment
@@ -68,5 +128,3 @@ Remove files created during build with:
 ```shell
 make clean
 ```
-
-<!-- You may want to include any contribution/style guidelines in this document>

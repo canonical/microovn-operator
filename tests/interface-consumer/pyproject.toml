@@ -1,25 +1,15 @@
+# Copyright 2026 Ubuntu
+# See LICENSE file for licensing details.
+
 [project]
 name = "interface-consumer"
 version ="1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "ops ~= 2.17",
-    "cryptography==44.0.1",
-    "pydantic==2.9.1",
+    "ops>=3.5.0",
+    "cryptography",
+    "pydantic",
 ]
 
-[project.optional-dependencies]
-dev = [
-    # Testing
-    "coverage[toml] ~= 7.8",
-    "ops[testing] ~= 2.22",
-    "pytest ~= 8.3",
-    "pytest-mock ~= 3.14",
-    "pytest-order ~= 1.3",
-    "jubilant ~= 1.0",
-    "python-dotenv ~= 1.0",
-    # Linting
-    "ruff>=0.11.13",
-    "codespell>=2.4.1",
-    "pyright>=1.1.402",
-]
+[tool.poetry]
+package-mode = false

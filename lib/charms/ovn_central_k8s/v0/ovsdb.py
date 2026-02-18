@@ -1,23 +1,11 @@
-"""TODO: Add a proper docstring here.
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
 
-This is a placeholder docstring for this charm library. Docstrings are
-presented on Charmhub and updated whenever you push a new version of the
-library.
 
-Complete documentation about creating and documenting libraries can be found
-in the SDK docs at https://juju.is/docs/sdk/libraries.
+"""This module defines the OVSDBCMS relation interface for Juju charms.
 
-See `charmcraft publish-lib` and `charmcraft fetch-lib` for details of how to
-share and consume charm libraries. They serve to enhance collaboration
-between charmers. Use a charmer's libraries for classes that handle
-integration with their charm.
-
-Bear in mind that new revisions of the different major API versions (v0, v1,
-v2 etc) are maintained independently.  You can continue to update v0 and v1
-after you have pushed v3.
-
-Markdown is supported, following the CommonMark specification.
-"""
+The module provides two main classes for implementing the OVSDB CMS (Clustered 
+Management System) relation pattern"""
 
 import json
 import logging
@@ -42,12 +30,9 @@ LIBAPI = 0
 # to 0 if you are raising the major API version
 LIBPATCH = 4
 
-
 LOADBALANCER_KEY = "loadbalancer-address"
 EXTERNAL_KEY = "external-connectivity"
 
-
-# TODO: add your code here! Happy coding!
 class OVSDBCMSConnectedEvent(EventBase):
     """OVSDBCMS connected Event."""
 
@@ -79,7 +64,7 @@ class OVSDBCMSRequires(Object):
     OVSDBCMSRequires class
     """
 
-    on = OVSDBCMSServerEvents()
+    on = OVSDBCMSServerEvents()  # pyright: ignore
     _stored = StoredState()
 
     def __init__(
@@ -192,7 +177,7 @@ class OVSDBCMSProvides(Object):
     OVSDBCMSProvides class
     """
 
-    on = OVSDBCMSClientEvents()
+    on = OVSDBCMSClientEvents()  # pyright: ignore
     _stored = StoredState()
 
     def __init__(

@@ -1,0 +1,79 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+type: charm
+
+title: MicroOVN Charm
+
+name: microovn
+summary: A thin layer around MicroOVN, to allow it to be used as a charm
+description: |
+  A thin layer over the software defined networking project MicroOVN.
+  This is a machine charm that primarily allows MicroOVN to be used easily within
+  Juju, enabling its many ease-of-use features to integrate with the charm ecosystem.
+
+links:
+  contact: OVN Engineering <ubuntu-ovn-eng@lists.launchpad.net>
+  source: https://github.com/canonical/microovn-operator
+  issues: https://github.com/canonical/microovn-operator/issues
+  website: https://charmhub.io/microovn
+
+platforms:
+  ubuntu@24.04:amd64:
+  ubuntu@24.04:arm64:
+  ubuntu@24.04:ppc64el:
+  ubuntu@24.04:riscv64:
+  ubuntu@24.04:s390x:
+
+parts:
+  poetry-deps:
+    plugin: nil
+    build-packages:
+      - curl
+    override-build: |
+      PIP_BREAK_SYSTEM_PACKAGES=true python3 -m pip install --user poetry==2.2.1 poetry-plugin-export==1.9.0
+      ln -sf "$HOME/.local/bin/poetry" /usr/local/bin/poetry
+      poetry config --local installer.no-binary :all:
+    build-environment:
+      - POETRY_VERSION: "2.2.1"
+  charm:
+    source: .
+    plugin: poetry
+    after: [poetry-deps]
+    build-packages:
+      - git
+      - python3-dev
+      - cargo-1.85
+      - libffi-dev
+      - libssl-dev
+      - pkg-config
+      - rustc-1.85
+
+config:
+  options: {}
+
+charm-libs:
+  - lib: tls_certificates_interface.tls_certificates
+    version: "4"
+  - lib: microcluster_token_distributor.token_distributor
+    version: "0.1"
+  - lib: operator-libs-linux.snap
+    version: "2"
+  - lib: grafana_agent.cos_agent
+    version: "0"
+
+requires:
+  cluster:
+    interface: worker-cluster
+    limit: 1
+  certificates:
+    interface: tls-certificates
+  ovsdb-external:
+    interface: ovsdb-cms
+
+provides:
+  ovsdb:
+    interface: ovsdb
+  cos-agent:
+    interface: cos_agent
+    optional: true
