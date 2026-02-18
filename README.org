@@ -1,0 +1,35 @@
+* MicroOVN Operator
+[[https://charmhub.io/microovn][Charmhub Page]]
+
+This is a thin layer over [[https://github.com/canonical/microovn][MicroOVN]], to allow MicroOVN to be used within the
+charm ecosystem.
+
+This is to be deployed alongside [[https://github.com/canonical/microcluster-token-distributor-operator][microcluster-token-distributor]] for cluster
+management.
+
+** Deployment
+An example deployment looks something like this:
+#+begin_src shell
+juju deploy microovn -n 3
+juju deploy microcluster-token-distributor
+juju relate microovn microcluster-token-distributor
+#+end_src
+
+This will give you 3 MicroOVN nodes, that should set up a stable cluster
+using the microcluster-token-distributor.
+
+** Integrations
+MicroOVN supports a couple of useful relations:
+- ~ovsdb~: which exposes the connection strings for the ovs northbound and
+  southbound databases.
+- ~tls-certificates~: which integrates with a certificate provider and then
+  adds the application certificate provided into the chain for the
+  certificates it issues to the MicroOVN units allowing for other
+  applications to properly interface with it.
+- ~cos-agent~: which exchanges information on several observability-related
+  data streams at once.
+
+** Other resources
+- [[CONTRIBUTING.md][Contributing]]
+- See the [[https://juju.is/docs/sdk][Juju SDK documentation]] for more information about developing and
+  improving charms.
