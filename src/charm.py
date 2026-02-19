@@ -296,7 +296,7 @@ class MicroovnCharm(ops.CharmBase):
 
         res = call_microovn_command("disable", "central", "--allow-disable-last-central")
         if res.returncode != 0:
-            if "this service is not enabled" in res.stdout:
+            if "this service is not enabled" in res.stderr:
                 logger.info("Central service already disabled")
                 return True
             else:

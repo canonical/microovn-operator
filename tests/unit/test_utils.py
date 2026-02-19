@@ -33,18 +33,19 @@ def mock_requests_get():
 
 def test_call_microovn_command_success(mock_subprocess_run):
     """Test successful microovn command execution."""
-    mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="output")
+    mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="output", stderr="error")
     res = call_microovn_command("status")
 
     mock_subprocess_run.assert_called_once_with(
         ["microovn", "status"],
         stdout=-1,
-        stderr=-3,
+        stderr=-1,
         input=None,
         text=True,
     )
     assert res.returncode == 0
     assert res.stdout == "output"
+    assert res.stderr == "error"
 
 
 def test_call_microovn_command_with_multiple_args(mock_subprocess_run):

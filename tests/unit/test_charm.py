@@ -620,7 +620,7 @@ def test_dataplane_mode_disable_central_fails_already_disabled(
         CompletedProcess(
             "",
             returncode=1,
-            stdout="this service is not enabled",
+            stderr="this service is not enabled",
         ),
         CompletedProcess("", returncode=0, stdout=""),
     ]
