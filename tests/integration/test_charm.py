@@ -34,6 +34,17 @@ def wait_with_retry(
     juju_env.wait(condition, timeout=timeout)
 
 
+@retry(
+    stop=stop_after_attempt(15),
+    wait=wait_fixed(5),
+    retry=retry_if_exception_type((jubilant._task.TaskError, TimeoutError)),
+    reraise=True,
+)
+def exec_with_retry(juju_env: jubilant.Juju, command: str, unit: str):
+    """Execute a command on a unit, with retry on CLIError."""
+    return juju_env.exec(command, unit=unit)
+
+
 def is_command_passing(juju, commandstring, unitname):
     try:
         juju.exec(commandstring, unit=unitname)
@@ -230,11 +241,13 @@ def test_ovn_k8s_integration(
     wait_with_retry(juju_k8s, jubilant.all_active)
 
     # ensure microovn central is down
-    output = juju_lxd.exec("microovn status", unit=f"{app_name}/0")
+    output = exec_with_retry(juju_lxd, "microovn status", unit=f"{app_name}/0")
     assert "central" not in output.stdout
     # test ovn-sbctl still works which means its using ovn-relay-k8s
-    juju_lxd.exec("microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/0")
-    output = juju_lxd.exec("microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/1")
+    exec_with_retry(juju_lxd, "microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/0")
+    output = exec_with_retry(
+        juju_lxd, "microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/1"
+    )
     assert output.stdout.count("Chassis") == 2  # We have 2 microovn units
 
 
@@ -323,11 +336,11 @@ def test_cos_relation(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
 
     # verify dashboards are provided
     dashboards = config.get("dashboards", [])
-    assert len(dashboards) == 0, "Dashboards provided, not expected"
+    assert len(dashboards) > 0, "Dashboards were not provided as expected"
 
     # verify alert rules are provided
     alert_rule_groups = config.get("metrics_alert_rules", {}).get("groups", {})
-    assert len(alert_rule_groups) == 1, "Alerts were provided, not expected"
+    assert len(alert_rule_groups) > 1, "Alert rule groups were not provided as expected"
 
     # test metrics endpoint is accessible
     output = juju_lxd.exec(

@@ -1,0 +1,131 @@
+# Copyright 2026 Ubuntu
+# See LICENSE file for licensing details.
+
+groups:
+  - name: MicroOVN Alert Rules
+    rules:
+      - alert: MicroOVNExporterDown
+        expr: absent(ovs_build_info)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: OVN metrics endpoint is unavailable
+          description: No OVN exporter metrics are being scraped for 5 minutes.
+
+      - alert: OvnControllerSouthboundDisconnected
+        expr: max(ovn_controller_southbound_database_connected) < 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: ovn-controller disconnected from SB DB
+          description: ovn-controller is not connected to the OVN southbound database.
+
+      - alert: OvnNorthdNoActiveInstance
+        expr: count(ovn_northd_status == 1) != 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: invalid ovn-northd active/standby state
+          description: Expected exactly one active ovn-northd instance, got {{ $value }}.
+
+      - alert: OvnNorthdNBConnectionDown
+        expr: max(ovn_northd_nb_connection_status) < 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: ovn-northd disconnected from NB DB
+          description: ovn-northd is not connected to the OVN northbound database.
+
+      - alert: OvnNorthdSBConnectionDown
+        expr: max(ovn_northd_sb_connection_status) < 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: ovn-northd disconnected from SB DB
+          description: ovn-northd is not connected to the OVN southbound database.
+
+      - alert: OvnNBDBNoLeader
+        expr: sum(ovn_db_cluster_server_role{db_name="OVN_Northbound", server_role="leader"}) < 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: OVN northbound DB has no leader
+          description: No OVN northbound database leader is currently reported.
+
+      - alert: OvnNBDBMultipleLeaders
+        expr: sum(ovn_db_cluster_server_role{db_name="OVN_Northbound", server_role="leader"}) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: OVN northbound DB has multiple leaders
+          description: More than one OVN northbound database leader is currently reported.
+
+      - alert: OvnSBDBNoLeader
+        expr: sum(ovn_db_cluster_server_role{db_name="OVN_Southbound", server_role="leader"}) < 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: OVN southbound DB has no leader
+          description: No OVN southbound database leader is currently reported.
+
+      - alert: OvnSBDBMultipleLeaders
+        expr: sum(ovn_db_cluster_server_role{db_name="OVN_Southbound", server_role="leader"}) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: OVN southbound DB has multiple leaders
+          description: More than one OVN southbound database leader is currently reported.
+
+      - alert: OvnDBClusterLogBacklog
+        expr: max(ovn_db_cluster_log_not_applied + ovn_db_cluster_log_not_committed) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: OVN DB cluster has unapplied/uncommitted log entries
+          description: OVN DB cluster replication is lagging and has pending log entries.
+
+      - alert: OvnNorthdTransactionErrors
+        expr: sum(increase(ovn_northd_txn_error[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: ovn-northd transaction errors detected
+          description: ovn-northd reported transaction errors in the last 10 minutes.
+
+      - alert: OvnControllerTransactionErrors
+        expr: sum(increase(ovn_controller_txn_error[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: ovn-controller transaction errors detected
+          description: ovn-controller reported transaction errors in the last 10 minutes.
+
+      - alert: OvnControllerTransactionIncomplete
+        expr: sum(increase(ovn_controller_txn_incomplete[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: ovn-controller incomplete transactions detected
+          description: ovn-controller reported incomplete transactions in the last 10 minutes.
+
+      - alert: OvsVswitchdFileDescriptorsHigh
+        expr: ovs_vswitchd_process_open_fds / ovs_vswitchd_process_max_fds > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: ovs-vswitchd file descriptor usage is high
+          description: ovs-vswitchd is using more than 90% of available file descriptors.

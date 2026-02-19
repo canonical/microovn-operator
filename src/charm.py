@@ -77,6 +77,7 @@ class MicroovnCharm(ops.CharmBase):
             self,
             scrape_configs=[
                 {
+                    "job_name": f"{self.app.name}_{self.unit.name.split('/')[1]}_ovn_metrics",
                     "metrics_path": OVN_EXPORTER_METRICS_PATH,
                     "static_configs": [
                         {
@@ -296,7 +297,7 @@ class MicroovnCharm(ops.CharmBase):
 
         res = call_microovn_command("disable", "central", "--allow-disable-last-central")
         if res.returncode != 0:
-            if "this service is not enabled" in res.stdout:
+            if "this service is not enabled" in res.stderr:
                 logger.info("Central service already disabled")
                 return True
             else:

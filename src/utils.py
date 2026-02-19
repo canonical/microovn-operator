@@ -17,11 +17,11 @@ def call_microovn_command(*args, stdin=None) -> subprocess.CompletedProcess[str]
     result = subprocess.run(
         ["microovn", *args],
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         input=stdin,
         text=True,
     )
-    logger.debug("Called microovn %s, return code: %d", args, result.returncode)
+    logger.info("Called microovn %s, return code: %d", args, result.returncode)
     return result
 
 
