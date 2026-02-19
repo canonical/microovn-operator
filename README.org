@@ -29,6 +29,65 @@ MicroOVN supports a couple of useful relations:
 - ~cos-agent~: which exchanges information on several observability-related
   data streams at once.
 
+** Integrate with COS
+This charm integrates with the Canonical Observability Stack (COS) using the Opentelemtry Collector.
+
+Prerequisites:
+- A machine model for MicroOVN and Grafana Agent.
+- A Kubernetes model with COS Lite deployed. See [[https://documentation.ubuntu.com/observability/track-2/tutorial/installation/][COS Lite documentation]] for details.
+
+Steps:
+1. Deploy OpenTelemetry Collector in the machine model:
+#+begin_src shell
+juju deploy opentelemetry-collector --channel=2/stable
+#+end_src
+2. Relate MicroOVN to OpenTelemetry Collector:
+#+begin_src shell
+juju relate microovn opentelemetry-collector
+#+end_src
+3. Connect OpenTelemetry Collector to COS Lite:
+#+begin_src shell
+# In the COS model
+juju offer prometheus-k8s:receive-remote-write prom-remote-write
+juju offer loki-k8s:logging loki-logging
+
+# In the machine model
+juju consume <controller>/cos.prom-remote-write
+juju consume <controller>/cos.loki-logging
+juju relate opentelemetry-collector prom-remote-write
+juju relate opentelemetry-collector loki-logging
+#+end_src
+
+*** Alerts and dashboards
+Alert rules are packaged in ~src/prometheus_alert_rules/alerts.yaml~:
+
+| Alert | Summary |
+|-------+---------|
+| ~MicroOVNExporterDown~ | OVN metrics endpoint missing for 5 minutes. |
+| ~OvnControllerSouthboundDisconnected~ | ovn-controller disconnected from SB DB. |
+| ~OvnNorthdNoActiveInstance~ | No or multiple active ovn-northd instances detected. |
+| ~OvnNorthdNBConnectionDown~ | ovn-northd disconnected from NB DB. |
+| ~OvnNorthdSBConnectionDown~ | ovn-northd disconnected from SB DB. |
+| ~OvnNBDBNoLeader~ | Northbound DB has no leader. |
+| ~OvnNBDBMultipleLeaders~ | Northbound DB reports multiple leaders. |
+| ~OvnSBDBNoLeader~ | Southbound DB has no leader. |
+| ~OvnSBDBMultipleLeaders~ | Southbound DB reports multiple leaders. |
+| ~OvnDBClusterLogBacklog~ | DB cluster has unapplied/uncommitted log entries. |
+| ~OvnNorthdTransactionErrors~ | ovn-northd reported transaction errors in last 10m. |
+| ~OvnControllerTransactionErrors~ | ovn-controller reported transaction errors in last 10m. |
+| ~OvnControllerTransactionIncomplete~ | ovn-controller reported incomplete transactions in last 10m. |
+| ~OvsVswitchdFileDescriptorsHigh~ | ovs-vswitchd using >90% of file descriptors. |
+
+Dashboards are packaged in ~src/dashboards/~:
+
+| Dashboard | Grafana name | Summary |
+|-----------+--------------+---------|
+| ~central-north-daemon.json~ | OVN Central / North Daemon | OVN Northd health: DB connections, active/standby status, build info, and transaction error/incomplete rates. |
+| ~central-northbound-db.json~ | OVN Central / Northbound DB | OVN Northbound DB cluster health: build/cluster info, leader/role, log status, connections, DB size, sessions, and monitors. |
+| ~central-southbound-db.json~ | OVN Central / Southbound DB | OVN Southbound DB cluster health: build/cluster info, leader/role, log status, connections, DB size, sessions, and monitors. |
+| ~host-controller.json~ | OVN Host / Controller | OVN controller health: SB connectivity, build info, integration bridge flows/ports, and transaction/error counters. |
+| ~host-ovs.json~ | OVS / Host Network | OVS datapath and bridge health: bridges, ports, flows, datapath stats, and vswitchd process metrics. |
+
 ** Other resources
 - [[CONTRIBUTING.md][Contributing]]
 - See the [[https://juju.is/docs/sdk][Juju SDK documentation]] for more information about developing and
