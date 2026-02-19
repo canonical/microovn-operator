@@ -34,6 +34,17 @@ def wait_with_retry(
     juju_env.wait(condition, timeout=timeout)
 
 
+@retry(
+    stop=stop_after_attempt(15),
+    wait=wait_fixed(5),
+    retry=retry_if_exception_type((jubilant._task.TaskError, TimeoutError)),
+    reraise=True,
+)
+def exec_with_retry(juju_env: jubilant.Juju, command: str, unit: str):
+    """Execute a command on a unit, with retry on CLIError."""
+    return juju_env.exec(command, unit=unit)
+
+
 def is_command_passing(juju, commandstring, unitname):
     try:
         juju.exec(commandstring, unit=unitname)
@@ -230,11 +241,13 @@ def test_ovn_k8s_integration(
     wait_with_retry(juju_k8s, jubilant.all_active)
 
     # ensure microovn central is down
-    output = juju_lxd.exec("microovn status", unit=f"{app_name}/0")
+    output = exec_with_retry(juju_lxd, "microovn status", unit=f"{app_name}/0")
     assert "central" not in output.stdout
     # test ovn-sbctl still works which means its using ovn-relay-k8s
-    juju_lxd.exec("microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/0")
-    output = juju_lxd.exec("microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/1")
+    exec_with_retry(juju_lxd, "microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/0")
+    output = exec_with_retry(
+        juju_lxd, "microovn.ovn-sbctl --no-leader-only show", unit=f"{app_name}/1"
+    )
     assert output.stdout.count("Chassis") == 2  # We have 2 microovn units
 
 
