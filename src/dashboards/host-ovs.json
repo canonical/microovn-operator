@@ -1,0 +1,1171 @@
+{
+  "description": "Dashboard to monitor OVS and host network details",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "iteration": 1658353262674,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "panels": [],
+      "title": "Info",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "uid": "${prometheusds}"
+      },
+      "description": "Shows the summary of OVS versions and number of nodes having a specific OVS version",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Value"
+          }
+        ]
+      },
+      "pluginVersion": "8.4.3",
+      "targets": [
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "exemplar": false,
+          "expr": "sum(ovs_build_info) by (version)",
+          "format": "table",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "OVS BUILD INFO",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {
+            "reducers": []
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "uid": "${prometheusds}"
+      },
+      "description": "OVN build info (controller / northd / db)",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "8.4.3",
+      "targets": [
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "exemplar": false,
+          "expr": "sum(ovn_controller_build_info) by (version)",
+          "format": "table",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "controller {{version}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "exemplar": false,
+          "expr": "sum(ovn_northd_build_info) by (version)",
+          "format": "table",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "northd {{version}}",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "exemplar": false,
+          "expr": "sum(ovn_db_build_info) by (version)",
+          "format": "table",
+          "instant": true,
+          "interval": "",
+          "legendFormat": "db {{version}}",
+          "refId": "C"
+        }
+      ],
+      "title": "OVN BUILD INFO",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {
+            "reducers": []
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 32,
+      "panels": [
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "ovs-vswitchd process CPU usage",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          },
+          "id": 212,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "8.4.3",
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_process_cpu_seconds_total{instance=~\"$instance\"}[$__rate_interval]) * 100)",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "ovs-vswitchd CPU (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "ovs-vswitchd process RSS memory",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "decbytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 12,
+            "y": 9
+          },
+          "id": 19,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, ovs_vswitchd_process_resident_memory_bytes{instance=~\"$instance\"})",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "ovs-vswitchd Memory (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "ovsdb-server process CPU usage",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "id": 220,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_db_process_cpu_seconds_total{instance=~\"$instance\"}[$__rate_interval]) * 100)",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "ovsdb-server CPU (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "ovsdb-server process RSS memory",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "decbytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 12,
+            "y": 15
+          },
+          "id": 221,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, ovs_db_process_resident_memory_bytes{instance=~\"$instance\"})",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "ovsdb-server Memory (TOP K)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Processes (TOP K)",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 36,
+      "panels": [
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Flow lookup hit rate",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 22
+          },
+          "id": 40,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_dp_flows_lookup_hit{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Flow Lookups Hit (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Flow lookup missed rate",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 22
+          },
+          "id": 41,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_dp_flows_lookup_missed{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Flow Lookups Missed (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Flow lookup lost rate",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 29
+          },
+          "id": 42,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_dp_flows_lookup_lost{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Flow Lookups Lost (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Datapath packets rate",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "pps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 29
+          },
+          "id": 83,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_dp_packets_total{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "DP Packets Rate (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Datapath flows total",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 36
+          },
+          "id": 81,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, ovs_vswitchd_dp_flows_total{instance=~\"$instance\"})",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "DP Flows Total (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Datapath ports total",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 36
+          },
+          "id": 85,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, ovs_vswitchd_dp_if_total{instance=~\"$instance\"})",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "DP Ports Total (TOP K)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Datapath (TOP K)",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "id": 22,
+      "panels": [
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Total number of OpenFlow flows on the OVS bridge",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 44
+          },
+          "id": 20,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, ovs_vswitchd_bridge_flows_total{instance=~\"$instance\", bridge=~\"$bridge\"})",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Bridge Flows Total (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Rate of OpenFlow flows on the OVS bridge",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 44
+          },
+          "id": 239,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_bridge_flows_total{instance=~\"$instance\", bridge=~\"$bridge\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Bridge Flows Rate (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Number of OVS ports on the bridge",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 51
+          },
+          "id": 18,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, ovs_vswitchd_bridge_ports_total{instance=~\"$instance\", bridge=~\"$bridge\"})",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Bridge Ports (TOP K)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Bridge (TOP K)",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "id": 87,
+      "panels": [
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Rate of link resets",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 59
+          },
+          "id": 109,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_interface_resets_total{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Link Resets Rate (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Rate of collisions",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 59
+          },
+          "id": 98,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_interface_collisions_total{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Collisions Rate (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Rate of RX/TX errors",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 66
+          },
+          "id": 96,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_interface_rx_errors_total{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "rx-{{instance}}",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_interface_tx_errors_total{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "tx-{{instance}}",
+              "refId": "B"
+            }
+          ],
+          "title": "Packet Error Rate (TOP K)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "uid": "${prometheusds}"
+          },
+          "description": "Rate of RX/TX drops",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 66
+          },
+          "id": 95,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "right"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_interface_rx_dropped_total{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "rx-{{instance}}",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "uid": "${prometheusds}"
+              },
+              "exemplar": false,
+              "expr": "topk($topk, rate(ovs_vswitchd_interface_tx_dropped_total{instance=~\"$instance\"}[$__rate_interval]))",
+              "interval": "",
+              "legendFormat": "tx-{{instance}}",
+              "refId": "B"
+            }
+          ],
+          "title": "Packet Drop Rate (TOP K)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Interface (TOP K)",
+      "type": "row"
+    }
+  ],
+  "refresh": false,
+  "schemaVersion": 35,
+  "style": "dark",
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false
+        },
+        "datasource": {
+          "uid": "${prometheusds}"
+        },
+        "definition": "label_values(ovs_build_info, instance)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Instance",
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(ovs_build_info, instance)",
+          "refId": "prometheus-instance-Variable-Query"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "uid": "${prometheusds}"
+        },
+        "definition": "label_values(ovs_vswitchd_bridge{instance=~\"$instance\"},bridge)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Bridge",
+        "multi": false,
+        "name": "bridge",
+        "options": [],
+        "query": {
+          "query": "label_values(ovs_vswitchd_bridge{instance=~\"$instance\"},bridge)",
+          "refId": "prometheus-bridge-Variable-Query"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "5",
+          "value": "5"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "topk",
+        "multi": false,
+        "name": "topk",
+        "options": [
+          {
+            "text": "5",
+            "value": "5"
+          },
+          {
+            "text": "10",
+            "value": "10"
+          },
+          {
+            "text": "20",
+            "value": "20"
+          },
+          {
+            "text": "100",
+            "value": "100"
+          },
+          {
+            "text": "1000",
+            "value": "1000"
+          },
+          {
+            "text": "2000",
+            "value": "2000"
+          }
+        ],
+        "query": "5, 10, 20, 100, 1000, 2000",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "",
+  "title": "OVS / Host Network",
+  "uid": "UVSzupDGz",
+  "version": 3,
+  "weekStart": "",
+  "tags": [
+    "ovn",
+    "ovs",
+    "host-network"
+  ]
+}
