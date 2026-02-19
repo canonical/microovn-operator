@@ -77,6 +77,7 @@ class MicroovnCharm(ops.CharmBase):
             self,
             scrape_configs=[
                 {
+                    "job_name": f"{self.app.name}_{self.unit.name.split('/')[1]}_ovn_metrics",
                     "metrics_path": OVN_EXPORTER_METRICS_PATH,
                     "static_configs": [
                         {
