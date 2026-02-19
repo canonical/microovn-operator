@@ -323,11 +323,11 @@ def test_cos_relation(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
 
     # verify dashboards are provided
     dashboards = config.get("dashboards", [])
-    assert len(dashboards) == 0, "Dashboards provided, not expected"
+    assert len(dashboards) > 0, "Dashboards were not provided as expected"
 
     # verify alert rules are provided
     alert_rule_groups = config.get("metrics_alert_rules", {}).get("groups", {})
-    assert len(alert_rule_groups) == 1, "Alerts were provided, not expected"
+    assert len(alert_rule_groups) > 1, "Alert rule groups were not provided as expected"
 
     # test metrics endpoint is accessible
     output = juju_lxd.exec(

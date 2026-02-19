@@ -1166,6 +1166,6 @@
   "tags": [
     "ovn",
     "ovs",
-    "host-network"
+    "host"
   ]
 }
