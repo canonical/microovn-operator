@@ -1286,12 +1286,14 @@ def _wrap_snap_operations(
                     revision=revision,
                 )
             snaps.append(snap)
+        # using the new error reporting from PR on the lib
+        # https://github.com/canonical/operator-libs-linux/pull/171
         except SnapError as e:  # noqa: PERF203
             logger.warning("Failed to %s snap %s: %s!", op, s, e.message)
-            errors.append(s)
+            errors.append(e.message)
         except SnapNotFoundError:
             logger.warning("Snap '%s' not found in cache!", s)
-            errors.append(s)
+            errors.append(f"Snap '{s}' not found in cache!")
 
     if errors:
         raise SnapError(f"Failed to install or refresh snap(s): {', '.join(errors)}")
