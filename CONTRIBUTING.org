@@ -1,13 +1,6 @@
 * Contributing
 ** Development Setup
-This project uses [[https://python-poetry.org/][Poetry]] for dependency management.
-Install Poetry and set up the development environment:
-#+begin_src shell
-pip install poetry==2.2.1
-make .venv
-#+end_src
-
-You'll also need ~tox~ for running tests:
+You need ~tox~ for running tests:
 #+begin_src shell
 sudo apt-get install -y tox
 #+end_src

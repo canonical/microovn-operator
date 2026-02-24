@@ -36,8 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
             sudo apt-get update
-            sudo apt-get install -y python3-pip tox
-            pip install poetry==2.2.1
+            sudo apt-get install -y tox
       - name: Check Code
         run: make check-code
 
@@ -64,8 +63,7 @@ jobs:
       - name: Install dependencies
         run: |
             sudo apt-get update
-            sudo apt-get install -y python3-pip tox
-            pip install poetry==2.2.1
+            sudo apt-get install -y tox
       - name: Run Unit Tests
         run: make check-unit
 
@@ -134,8 +132,7 @@ jobs:
         run: |
           sudo snap install concierge --classic
           sudo apt-get update
-          sudo apt-get install -y python3-pip tox
-          pip install poetry==2.2.1
+          sudo apt-get install -y tox
 
       - name: Prepare Environment
         run: |
