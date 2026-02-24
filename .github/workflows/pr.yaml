@@ -36,8 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
             sudo apt-get update
-            sudo apt-get install -y python3-pip tox
-            pip install poetry==2.2.1
+            sudo apt-get install -y tox
       - name: Check Code
         run: make check-code
 
@@ -64,8 +63,7 @@ jobs:
       - name: Install dependencies
         run: |
             sudo apt-get update
-            sudo apt-get install -y python3-pip tox
-            pip install poetry==2.2.1
+            sudo apt-get install -y tox
       - name: Run Unit Tests
         run: make check-unit
 
@@ -92,13 +90,21 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3-venv jq python3-pip
-          pip install poetry==2.2.1
+          sudo apt install -y tox jq
       - name: Discover individual tests
         id: discover
         run: |
-          make .venv
-          tests=$(.venv/bin/pytest -q --collect-only tests/integration/ | grep ::test_ | jq -R -s -c 'split("\n")[:-1]')
+          # The tox environment configuration installs dependencies with poetry
+          # in commands_pre.
+          #
+          # Consequently we cannot simply use the `--notest` argument to get
+          # the virtual environment populated with dependencies.
+          #
+          # The integration environment conveniently passes arguments to
+          # pytest, and we can use its `--version` argument as a noop which
+          # achieves the same thing.
+          tox -e integration -- --version
+          tests=$(.tox/integration/bin/pytest -q --collect-only tests/integration/ | grep ::test_ | jq -R -s -c 'split("\n")[:-1]')
           echo $tests
           echo "matrix={\"test\":$tests}" >> $GITHUB_OUTPUT
 
@@ -134,8 +140,7 @@ jobs:
         run: |
           sudo snap install concierge --classic
           sudo apt-get update
-          sudo apt-get install -y python3-pip tox
-          pip install poetry==2.2.1
+          sudo apt-get install -y tox
 
       - name: Prepare Environment
         run: |
