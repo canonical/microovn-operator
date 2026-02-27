@@ -374,6 +374,7 @@ def test_on_ovsdbcms_ready(
     assert manager.charm.unit.status == ops.ActiveStatus()
 
 
+@patch("charm.TokenConsumer.add_to_mirror")
 def test_on_certificates_available_success(
     mock_check_metrics_endpoint,
     mock_call_microovn_command,
