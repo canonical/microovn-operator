@@ -15,7 +15,7 @@ from functools import cached_property
 import ops
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
-from charms.microovn.v0.ovsdb import OVSDBProvides
+from charms.microovn.v0.ovsdb import CERT_UPDATE_KEY, OVSDBProvides
 from charms.ovn_central_k8s.v0.ovsdb import OVSDBCMSRequires
 from charms.tls_certificates_interface.v4.tls_certificates import Mode, TLSCertificatesRequiresV4
 
@@ -210,6 +210,8 @@ class MicroovnCharm(ops.CharmBase):
 
         if "New CA certificate: Issued" in res.stdout:
             logger.info("CA certificate updated, new certificates issued")
+            relation = self.model.get_relation(self.token_consumer.relation_name)
+            self.token_consumer.add_to_mirror(relation, {CERT_UPDATE_KEY: "done"})
 
     def _on_install(self, event: ops.EventBase) -> None:
         """Handle the install event."""
