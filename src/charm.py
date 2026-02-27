@@ -231,6 +231,7 @@ class MicroovnCharm(ops.CharmBase):
         if not wait_for_microovn_ready():
             logger.error("microovn waitready failed after retries")
             raise RuntimeError("microovn waitready failed after retries")
+        self.unit.status = ops.MaintenanceStatus("Waiting for cluster bootstrap")
 
         self._on_update_status(event)
 
