@@ -4,6 +4,7 @@
 """The snap management class."""
 
 import logging
+import re
 from typing import List, Tuple
 
 from charms.operator_libs_linux.v2 import snap
@@ -34,7 +35,7 @@ class SnapManager:
         retry_error_callback=(lambda state: state.outcome.result()),  # type: ignore
     )
     def install(self) -> bool:
-        """Install the snap exporter."""
+        """Install the snap exporter and required base if needed."""
         try:
             snap.add(self.name, channel=self.channel)
             logger.info(
@@ -42,11 +43,33 @@ class SnapManager:
                 self.name,
                 self.channel,
             )
-            self.snap_client.hold()
-            return self.snap_client.present is True
         except snap.SnapError as err:
-            logger.error("Failed to install %s from channel: %s %s", self.name, self.channel, err)
-        return False
+            err_msg = err.message
+            logger.error(
+                "Failed to install %s from channel: %s '%s'", self.name, self.channel, err_msg
+            )
+
+            # Snaps sometimes are built on an edge base, ie microovn with core26,
+            # this cannot be automatically installed as a dependacy due to its
+            # non stable status so we must detect and manually install it in
+            # these cases. We do this by checking for expected bases in the
+            # error message and then retrying installation with the new base.
+            regmatch = re.search(r'cannot install snap base "(core\d\d)"', err_msg)
+            if regmatch:
+                snap_base = regmatch.group(1)
+                logger.info(
+                    "Detected required base '%s', retrying installation with it", snap_base
+                )
+                try:
+                    snap.add(snap_base, channel="latest/edge")
+                    snap.add(self.name, channel=self.channel)
+                except snap.SnapError as err:
+                    logger.error("Retry with base %s failed: %s", snap_base, err)
+                    return False
+
+        # Hold the snap after successful install
+        self.snap_client.hold()
+        return self.snap_client.present is True
 
     def enable_and_start(self) -> bool:
         """Enable and start the snap services."""
