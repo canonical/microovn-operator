@@ -1,0 +1,112 @@
+* Contributing
+** Development Setup
+This project uses [[https://python-poetry.org/][Poetry]] for dependency management.
+Install Poetry and set up the development environment:
+#+begin_src shell
+pip install poetry==2.2.1
+make .venv
+#+end_src
+
+You'll also need ~tox~ for running tests:
+#+begin_src shell
+sudo apt-get install -y tox
+#+end_src
+
+** Testing
+*** Linting and Code Checks
+Linting and other code checks are done as part of the ~check-code~ target:
+#+begin_src shell
+make check-code
+#+end_src
+
+*** Unit Tests
+Unit tests can be run with the ~check-unit~ target:
+#+begin_src shell
+make check-unit
+#+end_src
+
+*** Integration Tests
+Integration tests are implemented using the
+[[https://github.com/canonical/jubilant][Jubilant]] framework.
+
+**** Prerequisites
+You can set the environment up using [[https://github.com/canonical/concierge][concierge]] utility
+to get started quickly:
+#+begin_src shell
+cat <<EOF > /tmp/concierge.yaml
+juju:
+  channel: 3.6/stable
+
+providers:
+  microk8s:
+    enable: true
+    bootstrap: true
+    addons:
+      - dns
+      - hostpath-storage
+      - metallb
+
+  lxd:
+    enable: true
+    bootstrap: true
+EOF
+
+sudo concierge prepare -c /tmp/concierge.yaml
+#+end_src
+
+You can customize the test environment using these optional environment
+variables:
+
+- ~LXD_CONTROLLER~: Name of the LXD Juju controller (default:
+  ~concierge-lxd~)
+- ~K8S_CONTROLLER~: Name of the MicroK8s Juju controller (default:
+  ~concierge-microk8s~)
+- ~MICROOVN_CHARM_PATH~: Path to a pre-built microovn charm (default:
+  auto-detected from cwd)
+- ~INTERFACE_CONSUMER_CHARM_PATH~: Path to a pre-built interface-consumer
+  charm (default: auto-detected from ~tests/interface-consumer/~)
+
+If you're not using ~concierge~ to set up your test environment, you can
+use the ~LXD_CONTROLLER~ and ~K8S_CONTROLLER~ variables to point to your
+existing Juju controllers.
+
+**** Running Integration Tests
+Execute integration tests using the ~check-integration~ target:
+#+begin_src shell
+make check-integration
+#+end_src
+
+Optionally tests may be run in parallel, for environments with
+sufficient resources:
+#+begin_src shell
+make check-integration PARALLEL=4
+#+end_src
+
+In the event of failure, you may also instruct the test suite to keep
+temporarily created models for further investigation:
+#+begin_src shell
+make check-integration TESTSUITEFLAGS=--keep-models
+#+end_src
+
+*** Running All Tests
+The ~check-system~ target runs both unit and integration tests:
+#+begin_src shell
+make check-system PARALLEL=4
+#+end_src
+
+The ~test~ target runs code checks, unit tests, and integration tests:
+#+begin_src shell
+make test PARALLEL=4 TESTSUITEFLAGS=--keep-models
+#+end_src
+
+** Build the charms
+Build the charms in this git repository using:
+#+begin_src shell
+make build-all
+#+end_src
+
+** Clean the build environment
+Remove files created during build with:
+#+begin_src shell
+make clean
+#+end_src
