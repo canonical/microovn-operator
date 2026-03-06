@@ -868,10 +868,11 @@ def test_on_bootstrapped(
     cluster_relation = testing.Relation(WORKER_RELATION)
 
     with patch("charm.COSAgentProvider"):
-        ctx.run(
+        with ctx(
             ctx.on.custom(TokenConsumer.on.bootstrapped),  # pyright: ignore
             testing.State(relations=[cluster_relation]),
-        )
+        ) as manager:
+            manager.charm.token_consumer._stored.in_cluster = True
 
     mock_ovn_exporter_snap.enable_and_start.assert_called_once()
     mock_logger.info.assert_any_call(

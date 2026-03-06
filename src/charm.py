@@ -276,8 +276,10 @@ class MicroovnCharm(ops.CharmBase):
 
     def _on_bootstrapped_or_joined(self, _: ops.EventBase):
         """Handle bootstrapped event."""
-        logger.info("microovn cluster was bootstrapped or joined, enabling the exporter")
-        self.ovn_exporter_snap_client.enable_and_start()
+        if self.is_in_cluster:
+            logger.info("microovn cluster was bootstrapped or joined, enabling the exporter")
+            self.ovn_exporter_snap_client.enable_and_start()
+            self.ovsdb_provides.update_relation_data()
 
     # HELPERS
 
