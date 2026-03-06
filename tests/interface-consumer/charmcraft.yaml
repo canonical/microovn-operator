@@ -2,7 +2,7 @@
 # See LICENSE file for licensing details.
 
 name: interface-consumer
-summary: Dummy consumer for testing interfaces
+summary: Placeholder charm with interfaces needed for testing
 description: Just for testing
 type: charm
 
