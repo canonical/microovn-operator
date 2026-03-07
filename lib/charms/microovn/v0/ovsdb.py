@@ -25,11 +25,12 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 ENV_FILE = "/var/snap/microovn/common/data/env/ovn.env"
 CONNECT_ENV_NAME = "OVN_{0}_CONNECT"
 CONNECT_STR_KEY = "db_{0}_connection_str"
+CERT_UPDATE_KEY = "CA-cert-upd8"
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,10 @@ class OVSDBProvides(Object):
             return
 
         if not (self.charm.unit.is_leader() and token_consumer._stored.in_cluster):
+            return
+
+        relation = self.charm.model.get_relation(token_consumer.relation_name)
+        if token_consumer.find_value(relation, CERT_UPDATE_KEY) != "done":
             return
 
         if not (relation := self.charm.model.get_relation(self.relation_name)):
