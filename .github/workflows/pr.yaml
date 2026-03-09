@@ -71,6 +71,16 @@ jobs:
             sudo apt-get install -y tox
       - name: Run Unit Tests
         run: make check-unit
+      - name: Generate Cobertura XML
+        run: |
+          mkdir -p coverage-results
+          tox exec -e unit -- coverage xml -o coverage-results/cobertura.xml
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-coverage
+          path: coverage-results/cobertura.xml
+          retention-days: 1
 
   pack-microovn:
     name: Pack MicroOVN charm
@@ -171,3 +181,66 @@ jobs:
 
       - name: Run tests
         run: make check-integration TESTSUITEFLAGS="${{ matrix.test }}"
+
+  tics:
+    name: TICS Code Quality
+    needs: unit-tests
+    runs-on: [self-hosted, linux, amd64, tiobe, noble]
+    # TICS execution requires access to an auth. token which is not available in the forks of this
+    # repository. We allow this job to run only if it has access to the token:
+    #  * On "push" action
+    #  * On scheduled action
+    #  * On pull request created from the main repository (not fork)
+    if: ${{ (github.event_name != 'pull_request') || (github.repository == github.event.pull_request.head.repo.full_name) }}
+    env:
+      COVERAGE_DIR: ${{ github.workspace }}/.coverage
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install poetry==2.2.1
+          poetry install --extras dev --no-root
+          pip install flake8 pylint
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-test-coverage
+          path: ${{ env.COVERAGE_DIR }}
+
+      # This type of the TICS run creates a persistent measurement point against
+      # which we measure subsequent changes. Therefore, it is created only on push to
+      # the main branch or during the weekly scheduled runs.
+      - name: "Full TICS run (mode: qserver)"
+        if: ${{ (github.event_name == 'push') || (github.event_name == 'schedule') }}
+        uses: tiobe/tics-github-action@v3
+        env:
+          TICSAUTHTOKEN: ${{ secrets.TICSAUTHTOKEN }}
+        with:
+          mode: qserver
+          project: microovn-operator
+          branchdir: .
+          viewerUrl: https://canonical.tiobe.com/tiobeweb/TICS/api/cfg?name=default
+          ticsAuthToken: ${{ secrets.TICSAUTHTOKEN }}
+          installTics: true
+
+      # This type of the TICS run compares current state of the code against the last
+      # persistent measurement point. We run in on proposed pull requests.
+      - name: "Comparative TICS run (mode: client)"
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: tiobe/tics-github-action@v3
+        env:
+          TICSAUTHTOKEN: ${{ secrets.TICSAUTHTOKEN }}
+        with:
+          mode: client
+          project: microovn-operator
+          viewerUrl: https://canonical.tiobe.com/tiobeweb/TICS/api/cfg?name=default
+          ticsAuthToken: ${{ secrets.TICSAUTHTOKEN }}
+          installTics: true
