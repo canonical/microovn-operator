@@ -642,6 +642,10 @@ def test_dataplane_mode_disable_central_fails_already_disabled(
         result = manager.charm._dataplane_mode()
 
     assert result is True
+    mock_call_microovn_command.assert_any_call(
+        "disable", "central", "--allow-disable-last-central"
+    )
+    mock_call_microovn_command.assert_any_call("config", "set", "ovn.central-ips", "192.168.0.16")
 
 
 def test_dataplane_mode_disable_central_fails_other_error(

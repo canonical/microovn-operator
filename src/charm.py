@@ -315,7 +315,6 @@ class MicroovnCharm(ops.CharmBase):
         if res.returncode != 0:
             if "this service is not enabled" in res.stderr:
                 logger.info("Central service already disabled")
-                return True
             else:
                 logger.error(
                     "Disabling central failed with error code %s, stderr: %s",
@@ -323,6 +322,7 @@ class MicroovnCharm(ops.CharmBase):
                     res.stderr,
                 )
                 raise RuntimeError(f"Disabling central failed with error code {res.returncode}")
+
         if self.unit.is_leader():
             if not self._set_central_ips_config():
                 return False
