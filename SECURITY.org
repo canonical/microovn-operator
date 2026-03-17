@@ -1,0 +1,48 @@
+* Security Process
+
+** What is a vulnerability?
+All vulnerabilities are bugs, but not every bug is a vulnerability.
+Vulnerabilities compromise one or more of:
+- Confidentiality (personal or corporate confidential data).
+- Integrity (trustworthiness and correctness).
+- Availability (uptime and service).
+
+If in doubt, please use the process for [[reporting a vulnerability]], and we
+will assess whether your report is in fact a security vulnerability, or if
+it should be [[https://bugs.launchpad.net/microovn/+filebug][reported as a bug]] using the normal bug process.
+
+** Reporting a vulnerability
+To report a security issue, file a [[https://github.com/Canonical/microovn-operator/security/advisories/new][Private Security Report]] with a
+description of the issue, the steps you took to create the issue, affected
+versions, and, if known, mitigations for the issue.
+
+The [[https://ubuntu.com/security/disclosure-policy][Ubuntu Security disclosure and embargo policy]] contains more information
+about what you can expect when you contact us and what we expect from you.
+
+** Product lifetime
+The main components of MicroOVN Operator, Open vSwitch (OVS) and Open
+Virtual Network (OVN), comes from the Ubuntu distribution.
+
+Releases of MicroOVN Operator in [[https://charmhub.io/microovn][charmhub]] that align with Ubuntu Long Term
+Support (LTS) releases, receive the same level of support throughout the
+lifetime of the corresponding Ubuntu LTS release.
+
+Please refer to the [[https://ubuntu.com/about/release-cycle][Ubuntu lifecycle and release cadence]] documentation for
+more information.
+
+** Tracking vulnerabilities
+Vulnerabilities, their status, and the state of the analysis or response
+will all be tracked through the [[https://ubuntu.com/security/cves][Ubuntu CVE tracker]].
+
+** Responding to vulnerabilities
+Vulnerabilities are classified by [[https://ubuntu.com/security/cves/about*priority][priority]], and the MicroOVN Operator
+project guarantees response to all High and Critical severity
+vulnerabilities, as well as any [[https://www.cisa.gov/known-exploited-vulnerabilities-catalog][Known Exploited Vulnerability]].
+
+Security updates and will be made available to consumers of latest [[https://charmhub.io/microovn][charmhub]]
+releases that align with supported Ubuntu Long Term Support (LTS) releases.
+
+** Responsible disclosure
+We follow the [[https://ubuntu.com/security/disclosure-policy][Ubuntu Security disclosure and embargo policy]].
+
+Please refer to the section on [[reporting a vulnerability]].
