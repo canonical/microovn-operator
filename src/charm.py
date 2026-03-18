@@ -155,6 +155,8 @@ class MicroovnCharm(ops.CharmBase):
             )
             return
 
+        self.ovsdb_provides.update_relation_data()
+
         if self.is_in_cluster and not check_metrics_endpoint(OVN_EXPORTER_METRICS_ENDPOINT):
             self.unit.status = ops.BlockedStatus(
                 "ovn-exporter metrics endpoint is not responding, check snap service status"
