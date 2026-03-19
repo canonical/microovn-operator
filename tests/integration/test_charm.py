@@ -135,7 +135,9 @@ def test_integrate_ovsdb(
     json_output = json.loads(output)
     data = json_output[f"{interface_consumer_app_name}/0"]["relation-info"][0]["application-data"]
     assert data.get("db_nb_connection_str")
+    assert len(data.get("db_nb_connection_str").split(",")) == 2
     assert data.get("db_sb_connection_str")
+    assert len(data.get("db_sb_connection_str").split(",")) == 2
 
 
 def test_certificates_integration(
