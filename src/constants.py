@@ -18,6 +18,10 @@ ALERT_RULES_DIR = "./src/prometheus_alert_rules"
 OVN_EXPORTER_METRICS_PATH = "/metrics"
 OVN_EXPORTER_PORT = 9310
 OVN_EXPORTER_CHANNEL = "latest/edge"
+APT_OVS_CONF_DB = "/var/lib/openvswitch/conf.db"
+APT_OVS_SERVICE = "openvswitch-switch.service"
+MICROOVN_OVSDB_DIR = "/var/snap/microovn/common/data/switch/db"
+MICROOVN_OVS_CONF_DB = f"{MICROOVN_OVSDB_DIR}/conf.db"
 
 OVN_EXPORTER_PLUGS: List[Tuple[str, str | None]] = [
     ("ovn-chassis", "microovn:ovn-chassis"),
