@@ -9,7 +9,9 @@ other charms it may need
 """
 
 import logging
+import os
 import socket
+import subprocess
 from functools import cached_property
 
 import ops
@@ -22,9 +24,13 @@ from charms.tls_certificates_interface.v4.tls_certificates import Mode, TLSCerti
 from config import MicroovnConfig
 from constants import (
     ALERT_RULES_DIR,
+    APT_OVS_CONF_DB,
+    APT_OVS_SERVICE,
     CERTIFICATES_RELATION,
     CSR_ATTRIBUTES,
     DASHBOARDS_DIR,
+    MICROOVN_OVS_CONF_DB,
+    MICROOVN_OVSDB_DIR,
     MICROOVN_TRACK,
     OVN_EXPORTER_CHANNEL,
     OVN_EXPORTER_METRICS_ENDPOINT,
@@ -97,6 +103,9 @@ class MicroovnCharm(ops.CharmBase):
 
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on[WORKER_RELATION].relation_changed, self._on_cluster_changed)
+        framework.observe(
+            self.on[WORKER_RELATION].relation_created, self._on_token_distributor_rel_created
+        )
         framework.observe(self.on.update_status, self._on_update_status)
         framework.observe(self.on.remove, self._on_remove)
 
@@ -227,6 +236,37 @@ class MicroovnCharm(ops.CharmBase):
 
         if "New CA certificate: Issued" in res.stdout:
             logger.info("CA certificate updated, new certificates issued")
+
+    def _migrate_ovs(self) -> None:
+        # ensure we only run this function once and dont overwrite the db
+        if os.path.exists(MICROOVN_OVS_CONF_DB) or not os.path.exists(APT_OVS_CONF_DB):
+            return
+
+        service_check = subprocess.run(
+            ["systemctl", "list-unit-files", APT_OVS_SERVICE],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        if service_check.returncode != 0:
+            return
+
+        subprocess.run(["mkdir", "-p", MICROOVN_OVSDB_DIR])
+        subprocess.run(["cp", APT_OVS_CONF_DB, MICROOVN_OVSDB_DIR])
+        subprocess.run(["systemctl", "disable", "--now", APT_OVS_SERVICE])
+
+    def _on_token_distributor_rel_created(self, event: ops.EventBase) -> None:
+        """Handle the token distributor relation created event."""
+        # We need to migrate ovs before bootstrap/join, but to allow testing we
+        # need to do this after install because there's no other way to get the
+        # timing consistent. So having it here makes the most sense because this
+        # relation is required for bootstrap/join and doing this when the
+        # relation is created allows us to get in before any join/bootstrap
+        # event. Ideally this would be done with a pre-bootstrap hook in token
+        # distributor but that does not exist as of v1. Even more ideally this
+        # would be done in the snap but there have been issues with the snap
+        # openvswitch interfaces giving us not enough permissions.
+        self._migrate_ovs()
 
     def _on_install(self, event: ops.EventBase) -> None:
         """Handle the install event."""
