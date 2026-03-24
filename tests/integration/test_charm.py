@@ -222,11 +222,11 @@ def test_ovn_k8s_integration(
 
     # setup ovn-central-k8s and its relations
     juju_k8s.deploy(OVN_CENTRAL_K8S_CHARM, channel=OVN_CENTRAL_K8S_CHANNEL, num_units=3)
-    juju_k8s.deploy(OVN_RELAY_K8S_CHARM, channel=OVN_RELAY_K8S_CHANNEL, num_units=3, trust=True)
-    juju_k8s.integrate(OVN_CENTRAL_K8S_CHARM, OVN_RELAY_K8S_CHARM)
     juju_k8s.integrate(OVN_CENTRAL_K8S_CHARM, f"{juju_lxd.model}.{certs_offer_name}")
+
+    juju_k8s.deploy(OVN_RELAY_K8S_CHARM, channel=OVN_RELAY_K8S_CHANNEL, num_units=3, trust=True)
     juju_k8s.integrate(OVN_RELAY_K8S_CHARM, f"{juju_lxd.model}.{certs_offer_name}")
-    wait_with_retry(juju_k8s, jubilant.all_agents_idle)
+    juju_k8s.integrate(OVN_CENTRAL_K8S_CHARM, OVN_RELAY_K8S_CHARM)
 
     # integrate microovn with ovn-relay-k8s
     juju_k8s.offer(
