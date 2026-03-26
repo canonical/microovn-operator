@@ -6,7 +6,7 @@ name = "microovn-operator"
 version = "1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "ops>=3.5.0",
+    "ops>=3.5.1",
     "cryptography>=46.0.5",
     "pydantic",
     "requests",
