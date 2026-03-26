@@ -51,6 +51,9 @@ parts:
     source: .
     plugin: poetry
     after: [poetry-deps]
+    override-build: |
+      echo "setuptools-scm<10.0.0" > constraints.txt
+      craftctl default
     build-packages:
       - git
       - python3-dev
@@ -58,6 +61,7 @@ parts:
       - libssl-dev
       - pkg-config
     build-environment:
+      - PIP_CONSTRAINT: constraints.txt
       - MATURIN_NO_INSTALL_RUST: "1"
 
 config:
