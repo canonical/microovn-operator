@@ -31,6 +31,7 @@ from constants import (
     DASHBOARDS_DIR,
     MICROOVN_OVS_CONF_DB,
     MICROOVN_OVSDB_DIR,
+    MICROOVN_SNAP_COMMON,
     MICROOVN_TRACK,
     OVN_EXPORTER_CHANNEL,
     OVN_EXPORTER_METRICS_ENDPOINT,
@@ -273,6 +274,11 @@ class MicroovnCharm(ops.CharmBase):
 
     def _on_install(self, event: ops.EventBase) -> None:
         """Handle the install event."""
+        # Allow the user to force install microovn alongside possible existing
+        # Open vSwitch instance.
+        subprocess.run(["mkdir", "-p", MICROOVN_SNAP_COMMON])
+        subprocess.run(["touch", MICROOVN_SNAP_COMMON + "/break_system_ovs"])
+
         snaps = [self.ovn_exporter_snap_client, self.microovn_snap_client]
 
         for snap in snaps:

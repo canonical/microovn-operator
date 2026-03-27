@@ -128,7 +128,9 @@ def _generate_test_certificates():
     }
 
 
+@patch("subprocess.run")
 def test_on_install_success(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
@@ -149,6 +151,7 @@ def test_on_install_success(
     mock_wait_for_microovn_ready.assert_called_once()
 
 
+@patch("subprocess.run")
 @pytest.mark.parametrize(
     "failing_snap",
     [
@@ -157,6 +160,7 @@ def test_on_install_success(
     ],
 )
 def test_on_install_snap_fails(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
@@ -174,7 +178,9 @@ def test_on_install_snap_fails(
         ctx.run(ctx.on.install(), testing.State())
 
 
+@patch("subprocess.run")
 def test_on_install_connect_fails(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
@@ -189,7 +195,9 @@ def test_on_install_connect_fails(
         ctx.run(ctx.on.install(), testing.State())
 
 
+@patch("subprocess.run")
 def test_on_install_waitready_fails(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
