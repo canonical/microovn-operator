@@ -20,7 +20,8 @@ OVN_EXPORTER_PORT = 9310
 OVN_EXPORTER_CHANNEL = "latest/edge"
 APT_OVS_CONF_DB = "/var/lib/openvswitch/conf.db"
 APT_OVS_SERVICE = "openvswitch-switch.service"
-MICROOVN_OVSDB_DIR = "/var/snap/microovn/common/data/switch/db"
+MICROOVN_SNAP_COMMON = "/var/snap/microovn/common"
+MICROOVN_OVSDB_DIR = f"{MICROOVN_SNAP_COMMON}/data/switch/db"
 MICROOVN_OVS_CONF_DB = f"{MICROOVN_OVSDB_DIR}/conf.db"
 
 OVN_EXPORTER_PLUGS: List[Tuple[str, str | None]] = [
