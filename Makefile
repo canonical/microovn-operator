@@ -26,7 +26,7 @@ build-all: build build-consumer
 
 # Charm libs targets
 $(TOKENDISTLIB):
-	charmcraft fetch-lib microcluster_token_distributor.token_distributor
+	charmcraft fetch-lib charms.microcluster_token_distributor.v0.token_distributor
 
 charm-libs: $(TOKENDISTLIB) $(OVSDBLIB)
 

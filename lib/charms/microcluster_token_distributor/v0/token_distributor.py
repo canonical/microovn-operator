@@ -24,7 +24,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 
 logger = logging.getLogger(__name__)
@@ -142,12 +142,26 @@ class ClusterJoinedEvent(ops.EventBase):
         self.bootstrapper = bootstrapper
 
 
+class ClusterPreBootstrapEvent(ops.EventBase):
+    """Event for when this unit bootstraps the cluster."""
+
+    pass
+
+
+class ClusterPreJoinEvent(ops.EventBase):
+    """Event for when this unit bootstraps the cluster."""
+
+    pass
+
+
 class TokenConsumerEvents(ops.ObjectEvents):
     """Events class for `on`."""
 
     bootstrapped = ops.EventSource(ClusterBootstrappedEvent)
     token_generated = ops.EventSource(TokenGeneratedEvent)
     joined = ops.EventSource(ClusterJoinedEvent)
+    prebootstrap = ops.EventSource(ClusterPreBootstrapEvent)
+    prejoin = ops.EventSource(ClusterPreJoinEvent)
 
 
 class TokenConsumer(ops.framework.Object):
@@ -360,6 +374,7 @@ class TokenConsumer(ops.framework.Object):
             relation_data[self.charm.unit]["mirror"] = "down"
 
     def _join_with_token(self, token: str) -> bool:
+        self.on.prejoin.emit()
         self.charm.unit.status = ops.MaintenanceStatus("Joining cluster")
         error, _ = self._call_cluster_command("join", token, *self.join_args_func())
         if error:
@@ -406,6 +421,7 @@ class TokenConsumer(ops.framework.Object):
         # could lead to a deadlock if a unit joins and adds data to the mirror
         # before being in the cluster
         if not self._stored.in_cluster and self.charm.unit.is_leader() and not token_in_cluster:
+            self.on.prebootstrap.emit()
             error, _ = self._call_cluster_command("bootstrap", *self.bootstrap_args_func())
             if error:
                 logger.error("{0} unable to bootstrap cluster".format(get_hostname()))

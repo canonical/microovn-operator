@@ -103,9 +103,6 @@ class MicroovnCharm(ops.CharmBase):
 
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on[WORKER_RELATION].relation_changed, self._on_cluster_changed)
-        framework.observe(
-            self.on[WORKER_RELATION].relation_created, self._on_token_distributor_rel_created
-        )
         framework.observe(self.on.update_status, self._on_update_status)
         framework.observe(self.on.remove, self._on_remove)
 
@@ -116,6 +113,8 @@ class MicroovnCharm(ops.CharmBase):
         framework.observe(self.ovsdbcms_requires.on.goneaway, self._on_ovsdbcms_broken)
         framework.observe(self.token_consumer.on.bootstrapped, self._on_bootstrapped_or_joined)
         framework.observe(self.token_consumer.on.joined, self._on_bootstrapped_or_joined)
+        framework.observe(self.token_consumer.on.prejoin, self._on_prebootstrap_or_prejoin)
+        framework.observe(self.token_consumer.on.prebootstrap, self._on_prebootstrap_or_prejoin)
         framework.observe(self.on.config_changed, self._on_config_changed)
 
     # PROPERTIES
@@ -255,17 +254,21 @@ class MicroovnCharm(ops.CharmBase):
         subprocess.run(["cp", APT_OVS_CONF_DB, MICROOVN_OVSDB_DIR])
         subprocess.run(["systemctl", "disable", "--now", APT_OVS_SERVICE])
 
-    def _on_token_distributor_rel_created(self, event: ops.EventBase) -> None:
-        """Handle the token distributor relation created event."""
-        # We need to migrate ovs before bootstrap/join, but to allow testing we
-        # need to do this after install because there's no other way to get the
-        # timing consistent. So having it here makes the most sense because this
-        # relation is required for bootstrap/join and doing this when the
-        # relation is created allows us to get in before any join/bootstrap
-        # event. Ideally this would be done with a pre-bootstrap hook in token
-        # distributor but that does not exist as of v1. Even more ideally this
-        # would be done in the snap but there have been issues with the snap
-        # openvswitch interfaces giving us not enough permissions.
+    def _on_prebootstrap_or_prejoin(self, event: ops.EventBase) -> None:
+        """Handle the pre join/pre bootstrap hook."""
+        # We need to migrate ovs before bootstrap/join but this means possibly
+        # losing network connectivity between taking OVS down and bringing
+        # microovn up. We cannot do this pre-install as we require network
+        # connectivity to download the ovn and possibly core26 snaps. We cannot
+        # do this on token_didstributor relation created as microovn may not be
+        # installed at that point. We must do it directly before bootstrap or
+        # join so it is here.
+        # Ideally this would be done in the snap but there have been issues with
+        # the snap openvswitch interfaces not giving us permissions, and we also
+        # cannot do this by shipping the snap in the image instead of OVS but
+        # this currently cannot be done due to issues in snapd.
+        #
+        # I hope this code is not here for long. (27/03/26)
         self._migrate_ovs()
 
     def _on_install(self, event: ops.EventBase) -> None:
