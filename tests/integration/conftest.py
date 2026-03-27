@@ -32,7 +32,7 @@ def lxd_controller_name() -> str:
 
 @pytest.fixture(scope="module")
 def k8s_controller_name() -> str:
-    return os.environ.get(K8S_CONTROLLER_ENV) or "concierge-microk8s"
+    return os.environ.get(K8S_CONTROLLER_ENV) or "concierge-k8s"
 
 
 def _juju_fixture(
