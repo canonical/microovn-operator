@@ -149,25 +149,7 @@ jobs:
 
       - name: Prepare Environment
         run: |
-          cat <<EOF > /tmp/concierge.yaml
-          juju:
-            channel: 3.6/stable
-
-          providers:
-            microk8s:
-              enable: true
-              bootstrap: true
-              addons:
-                - dns
-                - hostpath-storage
-                - metallb
-
-            lxd:
-              enable: true
-              bootstrap: true
-          EOF
-
-          sudo concierge prepare -c /tmp/concierge.yaml
+          sudo concierge prepare -p dev
 
       - name: Run tests
         run: make check-integration TESTSUITEFLAGS="${{ matrix.test }}"
