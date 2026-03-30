@@ -26,8 +26,18 @@ platforms:
   ubuntu@24.04:s390x:
 
 parts:
+  rust-deps:
+    plugin: nil
+    build-packages:
+      - rustup
+    override-build: |
+      craftctl default
+      rustup set profile minimal
+      rustup default 1.92.0
+      cargo --version
   poetry-deps:
     plugin: nil
+    after: [rust-deps]
     build-packages:
       - curl
     override-build: |
@@ -36,18 +46,23 @@ parts:
       poetry config --local installer.no-binary :all:
     build-environment:
       - POETRY_VERSION: "2.2.1"
+      - MATURIN_NO_INSTALL_RUST: "1"
   charm:
     source: .
     plugin: poetry
     after: [poetry-deps]
+    override-build: |
+      echo "setuptools-scm<10.0.0" > constraints.txt
+      craftctl default
     build-packages:
       - git
       - python3-dev
-      - cargo-1.85
       - libffi-dev
       - libssl-dev
       - pkg-config
-      - rustc-1.85
+    build-environment:
+      - PIP_CONSTRAINT: constraints.txt
+      - MATURIN_NO_INSTALL_RUST: "1"
 
 config:
   options:
