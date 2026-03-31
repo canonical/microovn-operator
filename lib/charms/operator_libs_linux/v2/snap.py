@@ -856,7 +856,7 @@ class SnapClient:
         socket_path: str = "/run/snapd.socket",
         opener: urllib.request.OpenerDirector | None = None,
         base_url: str = "http://localhost/v2/",
-        timeout: float = 30.0,
+        timeout: float = 60.0,
     ):
         """Initialize a client instance.
 
