@@ -72,6 +72,8 @@ class SnapManager:
                 except snap.SnapError as err:
                     logger.error("Retry with base %s failed: %s", snap_base, err)
                     return False
+                except Exception as _:
+                    return False
         except Exception as _:
             return False
 
