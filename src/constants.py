@@ -23,6 +23,7 @@ APT_OVS_SERVICE = "openvswitch-switch.service"
 MICROOVN_SNAP_COMMON = "/var/snap/microovn/common"
 MICROOVN_OVSDB_DIR = f"{MICROOVN_SNAP_COMMON}/data/switch/db"
 MICROOVN_OVS_CONF_DB = f"{MICROOVN_OVSDB_DIR}/conf.db"
+APT_OVS_PACKAGES = ["openvswitch-switch", "python3-openvswitch", "doca-openvswitch-switch"]
 
 OVN_EXPORTER_PLUGS: List[Tuple[str, str | None]] = [
     ("ovn-chassis", "microovn:ovn-chassis"),
