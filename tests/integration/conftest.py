@@ -73,7 +73,7 @@ def _juju_fixture(
                 yield juju  # run the test
 
                 if request.session.testsfailed:
-                    log = juju.debug_log(limit=300)
+                    log = juju.debug_log(limit=10000)
                     print(log, end="")
                 return
 
