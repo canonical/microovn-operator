@@ -3,7 +3,6 @@
 
 """Unit tests for the utilities in utils.py."""
 
-import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -166,5 +165,5 @@ def test_microovn_central_exists_failure(mock_subprocess_run):
     """Test microovn_central_exists when command fails."""
     mock_subprocess_run.return_value = MagicMock(returncode=1, stdout="error")
 
-    with pytest.raises(subprocess.CalledProcessError):
-        microovn_central_exists()
+    result = microovn_central_exists()
+    assert result is False
