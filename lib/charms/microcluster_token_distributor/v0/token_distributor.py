@@ -388,7 +388,15 @@ class TokenConsumer(ops.framework.Object):
         self.charm.unit.status = ops.MaintenanceStatus("Joining cluster")
         error, _ = self._call_cluster_command("join", token, *self.join_args_func())
         if error:
-            return False
+            # The join command may have succeeded on a previous hook
+            # execution that was interrupted before stored state was
+            # committed. Check if we are already in the cluster.
+            check_error, _ = self._call_cluster_command("list", "-f", "json")
+            if check_error:
+                return False
+            logger.info(
+                "cluster already joined, recovering stored state"
+            )
         self._stored.in_cluster = True
         self.charm.unit.status = ops.ActiveStatus("Joined cluster")
         self.on.joined.emit(bootstrapper=False)
