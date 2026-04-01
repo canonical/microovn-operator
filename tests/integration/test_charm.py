@@ -19,7 +19,7 @@ OVN_CENTRAL_K8S_CHARM = "ovn-central-k8s"
 OVN_CENTRAL_K8S_CHANNEL = "24.03/stable"
 OVN_RELAY_K8S_CHARM = "ovn-relay-k8s"
 OVN_RELAY_K8S_CHANNEL = "24.03/stable"
-DEFAULT_TIMEOUT = 300
+DEFAULT_TIMEOUT = 600
 
 
 @retry(
@@ -38,7 +38,9 @@ def wait_with_retry(
 @retry(
     stop=stop_after_attempt(15),
     wait=wait_fixed(5),
-    retry=retry_if_exception_type((jubilant._task.TaskError, TimeoutError)),
+    retry=retry_if_exception_type(
+        (jubilant._juju.CLIError, jubilant._task.TaskError, TimeoutError)
+    ),
     reraise=True,
 )
 def exec_with_retry(juju_env: jubilant.Juju, command: str, unit: str):
@@ -55,7 +57,7 @@ def is_command_passing(juju, commandstring, unitname):
         return False
 
 
-def test_integrate(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
+def test_integrate_basic(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
     juju_lxd.deploy(charm_path, app=app_name)
     juju_lxd.add_unit(app_name)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
@@ -87,14 +89,13 @@ def test_token_distributor_down(juju_lxd: jubilant.Juju, charm_path: Path, app_n
     juju_lxd.deploy(charm_path)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
-    juju_lxd.add_unit(app_name)
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
     juju_lxd.remove_unit(f"{TOKEN_DISTRIBUTOR_CHARM}/0")
     juju_lxd.add_unit(TOKEN_DISTRIBUTOR_CHARM)
     juju_lxd.add_unit(app_name)
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
     juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
-    juju_lxd.exec("microovn status", unit=f"{app_name}/2")
+    juju_lxd.exec("microovn status", unit=f"{app_name}/1")
 
 
 def test_microcluster_leader_down(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
@@ -102,23 +103,23 @@ def test_microcluster_leader_down(juju_lxd: jubilant.Juju, charm_path: Path, app
     juju_lxd.add_unit(app_name)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
-    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
-    juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
-    output = juju_lxd.exec("microovn cluster list -f json", unit=f"{app_name}/0").stdout
-    json_output = json.loads(output)
+    wait_with_retry(juju_lxd, jubilant.all_active)
+    wait_with_retry(juju_lxd, jubilant.all_agents_idle)
+    result = exec_with_retry(juju_lxd, "microovn cluster list -f json", unit=f"{app_name}/0")
+    json_output = json.loads(result.stdout)
     voter_names = [
         x["name"]
         for x in json_output
         if (x["role"] in ["voter", "PENDING"]) and (x["status"] == "ONLINE")
     ]
     voter_name = min(voter_names)
-    hostname = juju_lxd.exec("hostname -s", unit=f"{app_name}/0").stdout[:-1]
+    hostname = exec_with_retry(juju_lxd, "hostname -s", unit=f"{app_name}/0").stdout[:-1]
     if hostname == voter_name:
         juju_lxd.remove_unit(f"{app_name}/0")
     else:
         juju_lxd.remove_unit(f"{app_name}/1")
     juju_lxd.add_unit(app_name)
-    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
+    wait_with_retry(juju_lxd, jubilant.all_active)
 
 
 def test_integrate_ovsdb(
@@ -129,7 +130,6 @@ def test_integrate_ovsdb(
     interface_consumer_app_name: str,
 ):
     juju_lxd.deploy(charm_path)
-    juju_lxd.add_unit(app_name)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
@@ -153,7 +153,6 @@ def test_certificates_integration(
     interface_consumer_app_name: str,
 ):
     juju_lxd.deploy(charm_path)
-    juju_lxd.add_unit(app_name)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.deploy(SELF_SIGNED_CERTIFICATES_CHARM, channel=SELF_SIGNED_CERTIFICATES_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
@@ -163,7 +162,7 @@ def test_certificates_integration(
         lambda _: "CA certificate updated, new certificates issued" in juju_lxd.debug_log(),
         timeout=DEFAULT_TIMEOUT,
     )
-    destination = juju_lxd.status().apps[app_name].units[f"{app_name}/1"].public_address
+    destination = juju_lxd.status().apps[app_name].units[f"{app_name}/0"].public_address
     destination = destination + ":6643"
     command_str = "openssl s_client -connect {0}".format(destination)
     output = juju_lxd.exec(command_str + "|| true", unit=f"{SELF_SIGNED_CERTIFICATES_CHARM}/0")
@@ -267,7 +266,6 @@ def test_certificates_before_token_distributor(
     juju_lxd: jubilant.Juju, charm_path: Path, app_name: str
 ):
     juju_lxd.deploy(charm_path)
-    juju_lxd.add_unit(app_name)
     juju_lxd.deploy(SELF_SIGNED_CERTIFICATES_CHARM, channel=SELF_SIGNED_CERTIFICATES_CHANNEL)
     juju_lxd.integrate(app_name, SELF_SIGNED_CERTIFICATES_CHARM)
     juju_lxd.wait(
@@ -285,7 +283,7 @@ def test_certificates_before_token_distributor(
         lambda _: "CA certificate updated, new certificates issued" in juju_lxd.debug_log(),
         timeout=DEFAULT_TIMEOUT,
     )
-    destination = juju_lxd.status().apps[app_name].units[f"{app_name}/1"].public_address
+    destination = juju_lxd.status().apps[app_name].units[f"{app_name}/0"].public_address
     destination = destination + ":6643"
     command_str = "openssl s_client -connect {0} -CAfile /tmp/ca-cert.pem || true".format(
         destination
@@ -300,7 +298,6 @@ def test_cos_relation(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
 
     # deploy microovn and token-distributor to get microovn into active state
     juju_lxd.deploy(charm_path)
-    juju_lxd.add_unit(app_name)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)

@@ -45,9 +45,7 @@ def microovn_central_exists() -> bool:
             result.returncode,
             result.stderr,
         )
-        raise subprocess.CalledProcessError(
-            result.returncode, "microovn status", result.stdout, result.stderr
-        )
+        return False
     return "central" in result.stdout
 
 

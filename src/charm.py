@@ -25,6 +25,7 @@ from config import MicroovnConfig
 from constants import (
     ALERT_RULES_DIR,
     APT_OVS_CONF_DB,
+    APT_OVS_PACKAGES,
     APT_OVS_SERVICE,
     CERTIFICATES_RELATION,
     CSR_ATTRIBUTES,
@@ -254,6 +255,9 @@ class MicroovnCharm(ops.CharmBase):
         subprocess.run(["mkdir", "-p", MICROOVN_OVSDB_DIR])
         subprocess.run(["cp", APT_OVS_CONF_DB, MICROOVN_OVSDB_DIR])
         subprocess.run(["systemctl", "disable", "--now", APT_OVS_SERVICE])
+        subprocess.run(["modprobe", "-r", "openvswitch"])
+        subprocess.run(["modprobe", "openvswitch"])
+        subprocess.run(["apt", "remove", "-y", *APT_OVS_PACKAGES])
 
     def _on_prebootstrap_or_prejoin(self, event: ops.EventBase) -> None:
         """Handle the pre join/pre bootstrap hook."""

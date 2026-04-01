@@ -32,7 +32,7 @@ def lxd_controller_name() -> str:
 
 @pytest.fixture(scope="module")
 def k8s_controller_name() -> str:
-    return os.environ.get(K8S_CONTROLLER_ENV) or "concierge-k8s"
+    return os.environ.get(K8S_CONTROLLER_ENV) or "concierge-microk8s"
 
 
 def _juju_fixture(
@@ -73,7 +73,7 @@ def _juju_fixture(
                 yield juju  # run the test
 
                 if request.session.testsfailed:
-                    log = juju.debug_log(limit=300)
+                    log = juju.debug_log(limit=10000)
                     print(log, end="")
                 return
 
