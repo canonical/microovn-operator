@@ -431,6 +431,22 @@ class TokenConsumer(ops.framework.Object):
         # could lead to a deadlock if a unit joins and adds data to the mirror
         # before being in the cluster
         if not self._stored.in_cluster and self.charm.unit.is_leader() and not token_in_cluster:
+            # Check if the cluster was already bootstrapped (e.g. from a
+            # previous hook execution that was interrupted before stored state
+            # was committed). If so, recover by updating stored state rather
+            # than attempting a second bootstrap which would fail.
+            check_error, _ = self._call_cluster_command("list", "-f", "json")
+            if not check_error:
+                logger.info(
+                    "cluster already bootstrapped, recovering stored state"
+                )
+                self._stored.in_cluster = True
+                self.charm.unit.status = ops.ActiveStatus("Cluster bootstrapped")
+                self.on.bootstrapped.emit()
+                self.on.joined.emit(bootstrapper=True)
+                self._handle_mirror(event.relation)
+                return
+
             self.on.prebootstrap.emit()
             error, _ = self._call_cluster_command("bootstrap", *self.bootstrap_args_func())
             if error:
