@@ -240,6 +240,7 @@ def test_ovn_k8s_integration(
     )
 
     juju_lxd.deploy(charm_path)
+    juju_lxd.add_unit(app_name)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
     juju_lxd.integrate(app_name, SELF_SIGNED_CERTIFICATES_CHARM)
