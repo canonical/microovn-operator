@@ -38,7 +38,9 @@ def wait_with_retry(
 @retry(
     stop=stop_after_attempt(15),
     wait=wait_fixed(5),
-    retry=retry_if_exception_type((jubilant._task.TaskError, TimeoutError)),
+    retry=retry_if_exception_type(
+        (jubilant._juju.CLIError, jubilant._task.TaskError, TimeoutError)
+    ),
     reraise=True,
 )
 def exec_with_retry(juju_env: jubilant.Juju, command: str, unit: str):
@@ -101,23 +103,23 @@ def test_microcluster_leader_down(juju_lxd: jubilant.Juju, charm_path: Path, app
     juju_lxd.add_unit(app_name)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
-    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
-    juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
-    output = juju_lxd.exec("microovn cluster list -f json", unit=f"{app_name}/0").stdout
-    json_output = json.loads(output)
+    wait_with_retry(juju_lxd, jubilant.all_active)
+    wait_with_retry(juju_lxd, jubilant.all_agents_idle)
+    result = exec_with_retry(juju_lxd, "microovn cluster list -f json", unit=f"{app_name}/0")
+    json_output = json.loads(result.stdout)
     voter_names = [
         x["name"]
         for x in json_output
         if (x["role"] in ["voter", "PENDING"]) and (x["status"] == "ONLINE")
     ]
     voter_name = min(voter_names)
-    hostname = juju_lxd.exec("hostname -s", unit=f"{app_name}/0").stdout[:-1]
+    hostname = exec_with_retry(juju_lxd, "hostname -s", unit=f"{app_name}/0").stdout[:-1]
     if hostname == voter_name:
         juju_lxd.remove_unit(f"{app_name}/0")
     else:
         juju_lxd.remove_unit(f"{app_name}/1")
     juju_lxd.add_unit(app_name)
-    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
+    wait_with_retry(juju_lxd, jubilant.all_active)
 
 
 def test_integrate_ovsdb(
