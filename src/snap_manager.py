@@ -46,7 +46,9 @@ class SnapManager:
             return self.snap_client.present is True
         except snap.SnapError as err:
             logger.error("Failed to install %s from channel: %s %s", self.name, self.channel, err)
-        return False
+            return False
+        except Exception:
+            return False
 
     def enable_and_start(self) -> bool:
         """Enable and start the snap services."""

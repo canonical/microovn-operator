@@ -5,7 +5,7 @@
 
 import json
 from datetime import timedelta
-from subprocess import CompletedProcess
+from subprocess import DEVNULL, CompletedProcess
 from unittest.mock import ANY, MagicMock, patch
 
 import ops
@@ -25,7 +25,11 @@ from scenario.errors import UncaughtCharmError
 
 from charm import MicroovnCharm
 from constants import (
+    APT_OVS_CONF_DB,
+    APT_OVS_SERVICE,
     CERTIFICATES_RELATION,
+    MICROOVN_OVS_CONF_DB,
+    MICROOVN_OVSDB_DIR,
     MICROOVN_TRACK,
     OVN_EXPORTER_METRICS_ENDPOINT,
     OVSDB_RELATION,
@@ -124,7 +128,9 @@ def _generate_test_certificates():
     }
 
 
+@patch("subprocess.run")
 def test_on_install_success(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
@@ -145,6 +151,7 @@ def test_on_install_success(
     mock_wait_for_microovn_ready.assert_called_once()
 
 
+@patch("subprocess.run")
 @pytest.mark.parametrize(
     "failing_snap",
     [
@@ -153,6 +160,7 @@ def test_on_install_success(
     ],
 )
 def test_on_install_snap_fails(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
@@ -170,7 +178,9 @@ def test_on_install_snap_fails(
         ctx.run(ctx.on.install(), testing.State())
 
 
+@patch("subprocess.run")
 def test_on_install_connect_fails(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
@@ -185,7 +195,9 @@ def test_on_install_connect_fails(
         ctx.run(ctx.on.install(), testing.State())
 
 
+@patch("subprocess.run")
 def test_on_install_waitready_fails(
+    mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
@@ -917,3 +929,63 @@ def test_on_config_changed_invalid_branch(mock_microovn_snap):
     with pytest.raises(UncaughtCharmError):
         ctx.run(ctx.on.config_changed(), state_in)
     mock_microovn_snap.install.assert_not_called()
+
+
+@patch("os.path.exists")
+@patch("subprocess.run")
+def test_migrate_ovs_no_conf_db(mock_run, mock_exists):
+    """Test migration returns early if no OVS config DB exists."""
+    ctx = testing.Context(MicroovnCharm)
+    mock_exists.side_effect = lambda path: (
+        False if (path == APT_OVS_CONF_DB or path == MICROOVN_OVS_CONF_DB) else False
+    )
+    with ctx(ctx.on.start(), testing.State()) as manager:
+        manager.charm._migrate_ovs()
+
+    mock_exists.assert_any_call(APT_OVS_CONF_DB)
+    mock_run.assert_not_called()
+
+
+@patch("os.path.exists")
+@patch("subprocess.run")
+def test_migrate_ovs_microovn_db_exists(mock_run, mock_exists):
+    """Test migration returns early if no OVS config DB exists."""
+    ctx = testing.Context(MicroovnCharm)
+    mock_exists.return_value = True
+    with ctx(ctx.on.start(), testing.State()) as manager:
+        manager.charm._migrate_ovs()
+
+    mock_exists.assert_any_call(MICROOVN_OVS_CONF_DB)
+    mock_run.assert_not_called()
+
+
+@patch("os.path.exists")
+@patch("subprocess.run")
+def test_migrate_ovs_no_service(mock_run, mock_exists):
+    """Test migration returns early if the systemd service is missing."""
+    ctx = testing.Context(MicroovnCharm)
+    mock_exists.side_effect = lambda path: False if path == MICROOVN_OVS_CONF_DB else True
+    mock_run.return_value = CompletedProcess(args=[], returncode=1)
+    with ctx(ctx.on.start(), testing.State()) as manager:
+        manager.charm._migrate_ovs()
+
+    mock_run.assert_any_call(
+        ["systemctl", "list-unit-files", APT_OVS_SERVICE],
+        stdout=DEVNULL,
+        stderr=DEVNULL,
+    )
+
+
+@patch("os.path.exists")
+@patch("subprocess.run")
+def test_migrate_ovs_success(mock_run, mock_exists):
+    """Test migration successfully copies DB and disables the old service."""
+    ctx = testing.Context(MicroovnCharm)
+    mock_exists.side_effect = lambda path: False if path == MICROOVN_OVS_CONF_DB else True
+    mock_run.return_value = CompletedProcess(args=[], returncode=0)
+    with ctx(ctx.on.start(), testing.State()) as manager:
+        manager.charm._migrate_ovs()
+
+    mock_run.assert_any_call(["mkdir", "-p", MICROOVN_OVSDB_DIR])
+    mock_run.assert_any_call(["cp", APT_OVS_CONF_DB, MICROOVN_OVSDB_DIR])
+    mock_run.assert_any_call(["systemctl", "disable", "--now", APT_OVS_SERVICE])

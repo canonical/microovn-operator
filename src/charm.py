@@ -9,7 +9,9 @@ other charms it may need
 """
 
 import logging
+import os
 import socket
+import subprocess
 from functools import cached_property
 
 import ops
@@ -22,9 +24,15 @@ from charms.tls_certificates_interface.v4.tls_certificates import Mode, TLSCerti
 from config import MicroovnConfig
 from constants import (
     ALERT_RULES_DIR,
+    APT_OVS_CONF_DB,
+    APT_OVS_PACKAGES,
+    APT_OVS_SERVICE,
     CERTIFICATES_RELATION,
     CSR_ATTRIBUTES,
     DASHBOARDS_DIR,
+    MICROOVN_OVS_CONF_DB,
+    MICROOVN_OVSDB_DIR,
+    MICROOVN_SNAP_COMMON,
     MICROOVN_TRACK,
     OVN_EXPORTER_CHANNEL,
     OVN_EXPORTER_METRICS_ENDPOINT,
@@ -107,6 +115,8 @@ class MicroovnCharm(ops.CharmBase):
         framework.observe(self.ovsdbcms_requires.on.goneaway, self._on_ovsdbcms_broken)
         framework.observe(self.token_consumer.on.bootstrapped, self._on_bootstrapped_or_joined)
         framework.observe(self.token_consumer.on.joined, self._on_bootstrapped_or_joined)
+        framework.observe(self.token_consumer.on.prejoin, self._on_prebootstrap_or_prejoin)
+        framework.observe(self.token_consumer.on.prebootstrap, self._on_prebootstrap_or_prejoin)
         framework.observe(self.on.config_changed, self._on_config_changed)
 
     # PROPERTIES
@@ -228,8 +238,51 @@ class MicroovnCharm(ops.CharmBase):
         if "New CA certificate: Issued" in res.stdout:
             logger.info("CA certificate updated, new certificates issued")
 
+    def _migrate_ovs(self) -> None:
+        # ensure we only run this function once and dont overwrite the db
+        if os.path.exists(MICROOVN_OVS_CONF_DB) or not os.path.exists(APT_OVS_CONF_DB):
+            return
+
+        service_check = subprocess.run(
+            ["systemctl", "list-unit-files", APT_OVS_SERVICE],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        if service_check.returncode != 0:
+            return
+
+        subprocess.run(["mkdir", "-p", MICROOVN_OVSDB_DIR])
+        subprocess.run(["cp", APT_OVS_CONF_DB, MICROOVN_OVSDB_DIR])
+        subprocess.run(["systemctl", "disable", "--now", APT_OVS_SERVICE])
+        subprocess.run(["modprobe", "-r", "openvswitch"])
+        subprocess.run(["modprobe", "openvswitch"])
+        subprocess.run(["apt", "remove", "-y", *APT_OVS_PACKAGES])
+
+    def _on_prebootstrap_or_prejoin(self, event: ops.EventBase) -> None:
+        """Handle the pre join/pre bootstrap hook."""
+        # We need to migrate ovs before bootstrap/join but this means possibly
+        # losing network connectivity between taking OVS down and bringing
+        # microovn up. We cannot do this pre-install as we require network
+        # connectivity to download the ovn and possibly core26 snaps. We cannot
+        # do this on token_didstributor relation created as microovn may not be
+        # installed at that point. We must do it directly before bootstrap or
+        # join so it is here.
+        # Ideally this would be done in the snap but there have been issues with
+        # the snap openvswitch interfaces not giving us permissions, and we also
+        # cannot do this by shipping the snap in the image instead of OVS but
+        # this currently cannot be done due to issues in snapd.
+        #
+        # I hope this code is not here for long. (27/03/26)
+        self._migrate_ovs()
+
     def _on_install(self, event: ops.EventBase) -> None:
         """Handle the install event."""
+        # Allow the user to force install microovn alongside possible existing
+        # Open vSwitch instance.
+        subprocess.run(["mkdir", "-p", MICROOVN_SNAP_COMMON])
+        subprocess.run(["touch", MICROOVN_SNAP_COMMON + "/break_system_ovs"])
+
         snaps = [self.ovn_exporter_snap_client, self.microovn_snap_client]
 
         for snap in snaps:
@@ -315,7 +368,6 @@ class MicroovnCharm(ops.CharmBase):
         if res.returncode != 0:
             if "this service is not enabled" in res.stderr:
                 logger.info("Central service already disabled")
-                return True
             else:
                 logger.error(
                     "Disabling central failed with error code %s, stderr: %s",
@@ -323,9 +375,9 @@ class MicroovnCharm(ops.CharmBase):
                     res.stderr,
                 )
                 raise RuntimeError(f"Disabling central failed with error code {res.returncode}")
+
         if self.unit.is_leader():
-            if not self._set_central_ips_config():
-                return False
+            return self._set_central_ips_config()
 
         logger.info("Successfully switched to dataplane mode")
         return True
