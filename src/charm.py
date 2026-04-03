@@ -41,8 +41,10 @@ from constants import (
     OVN_EXPORTER_PORT,
     OVSDB_RELATION,
     OVSDBCMD_RELATION,
+    ROLE_ASSIGNMENT_RELATION,
     WORKER_RELATION,
 )
+from role_handler import RoleHandler
 from snap_manager import SnapManager
 from utils import (
     call_microovn_command,
@@ -101,6 +103,16 @@ class MicroovnCharm(ops.CharmBase):
             refresh_events=[self.on.config_changed],
         )
 
+        self.role_handler = RoleHandler(charm=self, relation_name=ROLE_ASSIGNMENT_RELATION)
+        framework.observe(
+            self.role_handler.requirer.on.role_assignment_changed,
+            self._on_role_assignment_changed,
+        )
+        framework.observe(
+            self.role_handler.requirer.on.role_assignment_revoked,
+            self._on_role_assignment_revoked,
+        )
+
         self.typed_config = self.load_config(MicroovnConfig, errors="blocked")
 
         framework.observe(self.on.install, self._on_install)
@@ -146,6 +158,15 @@ class MicroovnCharm(ops.CharmBase):
         """Return whether the ovsdb relation exists."""
         return self.model.get_relation(OVSDBCMD_RELATION) is not None
 
+    @property
+    def is_dataplane_only(self) -> bool:
+        """Return whether the unit is in confirmed dataplane-only mode."""
+        return (
+            self.is_in_cluster
+            and self.has_ovsdbcmd_relation
+            and self.ovsdbcms_requires.remote_ready()
+        )
+
     # HANDLERS
 
     def _on_update_status(self, _: ops.EventBase) -> None:
@@ -155,6 +176,12 @@ class MicroovnCharm(ops.CharmBase):
                 "Not in cluster. Waiting for token distrbutor relation"
             )
             return
+
+        # Re-evaluate role assignment constraints on every status check
+        if self.role_handler.has_relation:
+            self.role_handler.enforce_roles()
+            if isinstance(self.unit.status, (ops.BlockedStatus, ops.WaitingStatus)):
+                return
 
         if self.is_in_cluster and not self.has_ovsdbcmd_relation and not microovn_central_exists():
             self.unit.status = ops.BlockedStatus(
@@ -178,6 +205,16 @@ class MicroovnCharm(ops.CharmBase):
             return
         self.unit.status = ops.MaintenanceStatus("Refreshing MicroOVN snap")
         self.microovn_snap_client.install()
+        self._on_update_status(event)
+
+    def _on_role_assignment_changed(self, event) -> None:
+        """Handle role assignment changes."""
+        self.role_handler.apply(event)
+        self._on_update_status(event)
+
+    def _on_role_assignment_revoked(self, event) -> None:
+        """Handle role assignment revocation."""
+        self.role_handler.revoke(event)
         self._on_update_status(event)
 
     def _on_ovsdbcms_broken(self, event: ops.EventBase) -> None:
@@ -352,15 +389,14 @@ class MicroovnCharm(ops.CharmBase):
     def _dataplane_mode(self) -> bool:
         """Try to switch microovn to dataplane mode."""
         logger.info("Checking dataplane mode")
-        remote_ready = self.ovsdbcms_requires.remote_ready()
 
-        if not self.is_in_cluster or not self.has_ovsdbcmd_relation or not remote_ready:
+        if not self.is_dataplane_only:
             logger.info(
                 "Not going into dataplane mode, one of these is false in_cluster: "
                 "%s, relation_exists: %s, remote_ready: %s",
                 self.is_in_cluster,
                 self.has_ovsdbcmd_relation,
-                remote_ready,
+                self.ovsdbcms_requires.remote_ready(),
             )
             return True
 
@@ -375,6 +411,10 @@ class MicroovnCharm(ops.CharmBase):
                     res.stderr,
                 )
                 raise RuntimeError(f"Disabling central failed with error code {res.returncode}")
+
+        # Central was disabled (or already was) outside RoleHandler,
+        # invalidate the applied-roles cache so enforce_roles() re-applies.
+        self.role_handler.invalidate_applied_roles()
 
         if self.unit.is_leader():
             return self._set_central_ips_config()

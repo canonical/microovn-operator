@@ -69,6 +69,7 @@ def _juju_fixture(
                 },
             ) as juju:
                 juju.wait_timeout = 15 * 60
+                juju.model_constraints({"virt-type": "virtual-machine"})
 
                 yield juju  # run the test
 

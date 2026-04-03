@@ -5,8 +5,9 @@ PARALLEL ?= 0
 TESTSUITEFLAGS ?= ""
 CHARMFILE := microovn_ubuntu@24.04-amd64.charm
 OVSDBLIB := lib/charms/microovn/v0/ovsdb.py
+ROLEASSIGNMENTLIB := lib/charms/role_distributor/v0/role_assignment.py
 TOKENDISTLIB := lib/charms/microcluster_token_distributor/v0/token_distributor.py
-SRC_FILES := src/charm.py src/constants.py src/snap_manager.py src/utils.py
+SRC_FILES := src/charm.py src/constants.py src/role_handler.py src/snap_manager.py src/utils.py
 
 # Build targets
 build: $(CHARMFILE)
@@ -23,7 +24,10 @@ build-all: build build-consumer
 $(TOKENDISTLIB):
 	charmcraft fetch-lib charms.microcluster_token_distributor.v0.token_distributor
 
-charm-libs: $(TOKENDISTLIB) $(OVSDBLIB)
+$(ROLEASSIGNMENTLIB):
+	charmcraft fetch-lib role_distributor.role_assignment
+
+charm-libs: $(TOKENDISTLIB) $(OVSDBLIB) $(ROLEASSIGNMENTLIB)
 
 get-consumer-libs:
 	$(MAKE) -C tests/interface-consumer charm-libs

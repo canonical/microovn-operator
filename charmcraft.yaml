@@ -80,6 +80,8 @@ charm-libs:
     version: "2"
   - lib: grafana_agent.cos_agent
     version: "0"
+  - lib: role_distributor.role_assignment
+    version: "0"
 
 requires:
   cluster:
@@ -89,6 +91,10 @@ requires:
     interface: tls-certificates
   ovsdb-external:
     interface: ovsdb-cms
+  role-assignment:
+    interface: role-assignment
+    limit: 1
+    optional: true
 
 provides:
   ovsdb:
