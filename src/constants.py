@@ -13,7 +13,6 @@ CERTIFICATES_RELATION = "certificates"
 OVSDBCMD_RELATION = "ovsdb-external"
 ROLE_ASSIGNMENT_RELATION = "role-assignment"
 MICROOVN_TRACK = "latest"
-SNAPD_CHANNEL = "latest/edge"
 VALID_SNAP_RISKS = ["stable", "candidate", "beta", "edge"]
 DASHBOARDS_DIR = "./src/dashboards"
 ALERT_RULES_DIR = "./src/prometheus_alert_rules"
