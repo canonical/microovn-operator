@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from ops import CharmBase, EventBase, StoredState
+from ops import CharmBase, RelationChangedEvent, StoredState
 from ops.framework import Object
 
 # The unique Charmhub library identifier, never change it
@@ -25,7 +25,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 ENV_FILE = "/var/snap/microovn/common/data/env/ovn.env"
 CONNECT_ENV_NAME = "OVN_{0}_CONNECT"
@@ -97,10 +97,16 @@ class OVSDBProvides(Object):
             self._on_ovsdb_relation_changed,
         )
 
-    def _on_ovsdb_relation_changed(self, _: EventBase):
-        self.update_relation_data()
+    def _on_ovsdb_relation_changed(self, event: RelationChangedEvent):
+        self._update_relation_data(event.relation)
 
     def update_relation_data(self):
+        """Update the data stored in the application databag for all ovsdb relations."""
+        if ovsdb_relations := self.charm.model.relations[self.relation_name]:
+            for r in ovsdb_relations:
+                self._update_relation_data(r)
+
+    def _update_relation_data(self, relation):
         """Update the data stored in the application databag for the relation."""
         token_consumer = getattr(self.charm, "token_consumer", None)
         if not token_consumer:
@@ -109,7 +115,7 @@ class OVSDBProvides(Object):
         if not (self.charm.unit.is_leader() and token_consumer._stored.in_cluster):
             return
 
-        if not (relation := self.charm.model.get_relation(self.relation_name)):
+        if not relation:
             return
 
         connect_str = self.get_connection_strings()
