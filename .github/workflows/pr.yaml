@@ -109,7 +109,7 @@ jobs:
           # pytest, and we can use its `--version` argument as a noop which
           # achieves the same thing.
           tox -e integration -- --version
-          tests=$(.tox/integration/bin/pytest -q --collect-only tests/integration/ | grep ::test_ | jq -R -s -c 'split("\n")[:-1]')
+          tests=$(tox -e integration -- -qq --collect-only tests/integration/ | grep ::test_ | jq -R -s -c 'split("\n")[:-1]')
           echo $tests
           echo "matrix={\"test\":$tests}" >> $GITHUB_OUTPUT
 

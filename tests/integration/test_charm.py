@@ -3,11 +3,14 @@
 # See LICENSE file for licensing details.
 
 import json
+import os
 from pathlib import Path
 from typing import Callable
 
 import jubilant
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+
+from constants import MICROOVN_TRACK
 
 TOKEN_DISTRIBUTOR_CHARM = "microcluster-token-distributor"
 TOKEN_DISTRIBUTOR_CHANNEL = "latest/edge"
@@ -55,6 +58,42 @@ def is_command_passing(juju, commandstring, unitname):
     except Exception as e:
         print(e)
         return False
+
+
+def lts_year(track):
+    """Get lts year from YY.MM string."""
+    y, _ = track.split(".")
+    y_lts = int(int(y) / 2) * 2
+    return y_lts
+
+
+def max_base_from_release_track(track):
+    """Get the most recent build base for a given release."""
+    # This assumes that we will continue the pattern of releasing on the previous
+    # build base and updating to a new one upon an LTS release.
+    #
+    # I think this is a reasonable assumption and the other option is a bunch of
+    # charmhub logic that I would like to avoid.
+    return str(lts_year(track)) + ".04"
+
+
+def previous_lts(track):
+    if track == "latest":
+        return "26.03"
+    else:
+        return str(lts_year(track)) + ".03"
+
+
+def previous_release(track):
+    if track == "latest":
+        return "26.03"
+    else:
+        # Assumes we keep our standard release cadance.
+        y, m = track.split(".")
+        if m == "03":
+            return str(int(y) - 1) + ".09"
+        elif m == "09":
+            return y + ".03"
 
 
 def test_integrate_basic(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
@@ -402,3 +441,52 @@ def test_migrate_ovs(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
     juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
     is_command_passing(juju_lxd, "ip netns exec ns1 ping 10.0.0.2", f"{app_name}/0")
+
+
+def upgrade_from_channel_test(
+    juju_lxd: jubilant.Juju,
+    charm_path: Path,
+    app_name: str,
+    microovn_channel: str,
+):
+    """Test upgrading the charm from microovn_channel to the locally built charm."""
+    # Deploy the stable version from Charmhub
+    juju_lxd.deploy("microovn", channel=microovn_channel, app=app_name)
+    juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
+
+    # Integrate and wait for the stable deployment to settle
+    juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
+    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
+    juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
+
+    # Perform the upgrade using the locally built charm
+    juju_lxd.refresh(app_name, path=charm_path)
+
+    # Wait for the upgraded application to settle back into an active state
+    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
+    juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
+
+    # Verify functionality post-upgrade
+    juju_lxd.exec("microovn status", unit=f"{app_name}/0")
+
+
+def test_upgrade_from_stable(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
+    """Upgrade test from latest/stable."""
+    upgrade_from_channel_test(juju_lxd, charm_path, app_name, MICROOVN_TRACK + "/stable")
+
+
+def test_upgrade_from_previous_lts(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
+    """Upgrade test from previous lts if its available on the base we are testing with."""
+    lts = previous_lts(MICROOVN_TRACK)
+    if max_base_from_release_track(lts) in os.path.basename(charm_path):
+        upgrade_from_channel_test(juju_lxd, charm_path, app_name, lts + "/stable")
+
+
+def test_upgrade_from_previous_release(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
+    """Upgrade test from previous release if its available on the base we are testing with."""
+    rel = previous_release(MICROOVN_TRACK)
+    if rel == previous_lts(MICROOVN_TRACK):
+        # Skip test on it being not needed.
+        return True
+    if max_base_from_release_track(rel) in os.path.basename(charm_path):
+        upgrade_from_channel_test(juju_lxd, charm_path, app_name, rel + "/stable")
