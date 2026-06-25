@@ -130,7 +130,10 @@ jobs:
 
           if '${{ inputs.cache }}'
           then
-            sudo --user "$USER" --preserve-env --preserve-env=PATH -- env -- charmcraftlocal pack -v --platform='${{ needs.collect-platforms.outputs.name }}'
+            if ! sudo --user "$USER" --preserve-env --preserve-env=PATH -- env -- charmcraftlocal pack -v --platform='${{ needs.collect-platforms.outputs.name }}'; then
+              echo "::warning::Packing with cache failed. Retrying with cache disabled..."
+              sudo --user "$USER" --preserve-env --preserve-env=PATH -- env -- charmcraftlocal pack -v --command-name=charmcraft --platform='${{ needs.collect-platforms.outputs.name }}'
+            fi
           else
             sudo --user "$USER" --preserve-env --preserve-env=PATH -- env -- charmcraftlocal pack -v --command-name=charmcraft --platform='${{ needs.collect-platforms.outputs.name }}'
           fi
