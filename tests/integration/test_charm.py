@@ -273,7 +273,7 @@ def test_certificates_before_token_distributor(
         timeout=DEFAULT_TIMEOUT,
     )
     juju_lxd.wait(
-        lambda status: jubilant.all_blocked(status, app_name),
+        lambda status: jubilant.all_maintenance(status, app_name),
         timeout=DEFAULT_TIMEOUT,
     )
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
@@ -371,7 +371,7 @@ def test_cos_relation(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
 def test_migrate_ovs(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
     juju_lxd.deploy(charm_path, app=app_name)
     juju_lxd.wait(
-        lambda status: jubilant.all_blocked(status, app_name),
+        lambda status: jubilant.all_maintenance(status, app_name),
         timeout=DEFAULT_TIMEOUT,
     )
     juju_lxd.exec("apt install openvswitch-switch -y", unit=f"{app_name}/0")
