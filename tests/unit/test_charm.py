@@ -572,8 +572,8 @@ def test_on_cluster_changed_not_in_cluster(
         manager.charm.token_consumer._stored.in_cluster = False
 
     mock_call_microovn_command.assert_not_called()
-    assert manager.charm.unit.status == ops.BlockedStatus(
-        "Not in cluster. Waiting for token distrbutor relation"
+    assert manager.charm.unit.status == ops.MaintenanceStatus(
+        "Waiting for token distrbutor relation"
     )
 
 
