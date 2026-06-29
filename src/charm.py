@@ -42,7 +42,6 @@ from constants import (
     OVSDB_RELATION,
     OVSDBCMD_RELATION,
     ROLE_ASSIGNMENT_RELATION,
-    SNAPD_CHANNEL,
     WORKER_RELATION,
 )
 from role_handler import RoleHandler
@@ -151,11 +150,6 @@ class MicroovnCharm(ops.CharmBase):
     def ovn_exporter_snap_client(self) -> SnapManager:  # pragma: nocover
         """Return the snap client."""
         return SnapManager("ovn-exporter", self.ovn_exporter_snap_channel)
-
-    @cached_property
-    def snapd_snap_client(self) -> SnapManager:  # pragma: nocover
-        """Return the snap client."""
-        return SnapManager("snapd", SNAPD_CHANNEL)
 
     @property
     def is_in_cluster(self) -> bool:
@@ -341,11 +335,6 @@ class MicroovnCharm(ops.CharmBase):
         # Open vSwitch instance.
         subprocess.run(["mkdir", "-p", MICROOVN_SNAP_COMMON])
         subprocess.run(["touch", MICROOVN_SNAP_COMMON + "/break_system_ovs"])
-
-        self.unit.status = ops.MaintenanceStatus(f"Installing {self.snapd_snap_client.name} snap")
-        if not self.snapd_snap_client.install():
-            logger.error("Failed to install %s snap", self.snapd_snap_client.name)
-            raise RuntimeError(f"Failed to install {self.snapd_snap_client.name} snap")
 
         snaps = [self.ovn_exporter_snap_client, self.microovn_snap_client]
 

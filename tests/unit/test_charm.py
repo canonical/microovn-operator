@@ -66,15 +66,6 @@ def mock_ovn_exporter_snap():
 
 
 @pytest.fixture()
-def mock_snapd_snap():
-    """Mock the microovn snap client for charm tests."""
-    mock_snap = MagicMock(spec=SnapManager)
-    mock_snap.name = "snapd"
-    with patch.object(MicroovnCharm, "snapd_snap_client", mock_snap):
-        yield mock_snap
-
-
-@pytest.fixture()
 def mock_check_metrics_endpoint():
     """Mock check_metrics_endpoint function."""
     with patch("charm.check_metrics_endpoint") as mock:
@@ -143,7 +134,6 @@ def test_on_install_success(
     mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
-    mock_snapd_snap,
     mock_check_metrics_endpoint,
     mock_wait_for_microovn_ready,
 ):
@@ -153,7 +143,6 @@ def test_on_install_success(
 
     mock_ovn_exporter_snap.install.assert_called_once()
     mock_microovn_snap.install.assert_called_once()
-    mock_snapd_snap.install.assert_called_once()
     mock_ovn_exporter_snap.connect.assert_called_once_with(
         [
             ("ovn-chassis", "microovn:ovn-chassis"),
@@ -175,7 +164,6 @@ def test_on_install_snap_fails(
     mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
-    mock_snapd_snap,
     mock_check_metrics_endpoint,
     mock_wait_for_microovn_ready,
     failing_snap,
@@ -196,7 +184,6 @@ def test_on_install_connect_fails(
     mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
-    mock_snapd_snap,
     mock_check_metrics_endpoint,
     mock_wait_for_microovn_ready,
 ):
@@ -214,7 +201,6 @@ def test_on_install_waitready_fails(
     mock_subprocess_run,
     mock_microovn_snap,
     mock_ovn_exporter_snap,
-    mock_snapd_snap,
     mock_check_metrics_endpoint,
     mock_wait_for_microovn_ready,
 ):
