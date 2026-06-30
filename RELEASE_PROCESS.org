@@ -9,7 +9,7 @@ expected ubuntu image.
 Stable MicroOVN charm releases follow the [[https://ubuntu.com/about/release-cycle][Ubuntu release cycle]], and a new
 stable version is made shortly after each new Ubuntu LTS release.
 
-The [[**Stable-Branches][Stable branches]] are named "branch-YY.MM", where the numbers come from
+The [[*Stable Branches][Stable branches]] are named "branch-YY.MM", where the numbers come from
 the corresponding MicroOVN snap version string, for example: "branch-25.03".
 
 ** Stable Branches
@@ -17,11 +17,47 @@ We go out of our way to embed logic in the product itself, its test suite
 and CI pipeline to avoid manual effort on each new release.
 
 Steps to cut a stable branch:
-1. Create a branch "branch-YY.MM" at the commit agreed for version cutoff.
-2. Create a commit "Prepare for YY.MM", This should:
-   - Set the charmcraft base to ~ubuntu@YY.04~
-   - Update MICROOVN_TRACK in [[file:src/constants.py][src/constants.py]] to "YY.MM"
-   - Update the default risk in [[file:charmcraft.yaml][charmcraft.yaml]] to "stable"
-3. Create a PR named "YY.MM Release" for the branch "branch-YY.MM" containing
-    this commit.
-4. Review and merge.
+*** Create a branch "prepare-YY.MM" at the commit agreed for version cutoff
+#+begin_src shell :session release :results output :exports both
+git checkout main
+VERSION=$(date +%y.03)
+git switch -C prepare-$VERSION
+#+end_src
+
+*** Create a commit "prepare for YY.MM", this should:
+- set the charmcraft platforms to the latest stable release
+- update microovn_track in [[file:src/constants.py][src/constants.py]] to "yy.mm"
+- update the default risk in [[file:charmcraft.yaml][charmcraft.yaml]] to "stable"
+#+begin_src shell :session release :results output :exports both
+lts=$(($(date +%y) /2 *2)).04
+sed -i -E "s/ubuntu@[0-9]{2}\.04/ubuntu@$lts/g" charmcraft.yaml
+sed -i -E "s/(MICROOVN_TRACK) = .*/\1 = \"$VERSION\"/" src/constants.py
+sed -i '
+  /microovn_risk:/{
+  N
+  s/\(default: \).*/\1stable/
+  }
+' charmcraft.yaml
+
+git add charmcraft.yaml src/constants.py
+git commit -m "prepare for $VERSION" --signoff
+#+end_src
+
+*** Create a commit "return to latest/edge" this should:
+- update microovn_track in [[file:src/constants.py][src/constants.py]] to "latest"
+- update the default risk in [[file:charmcraft.yaml][charmcraft.yaml]] to "edge"
+#+begin_src shell :session release :results output :exports both
+sed -i -E "s/(MICROOVN_TRACK) = .*/\1 = \"latest\"/" src/constants.py
+sed -i '
+  /microovn_risk:/{
+  N
+  s/\(default: \).*/\1edge/
+  }
+' charmcraft.yaml
+
+git add charmcraft.yaml src/constants.py
+git commit -m "return to latest/edge" --signoff
+#+end_src
+
+*** Create a PR named "YY.MM Release" merging prepare-YY.MM into main
+*** Once Merged, create branch-YY.MM from the "prepare for YY.MM" commit
