@@ -71,6 +71,18 @@ def mock_microovn_central_exists():
         yield mock
 
 
+@pytest.fixture()
+def mock_count_cluster_members():
+    """Mock count_microovn_cluster_members as seen by role_handler.
+
+    Defaults to a single-member cluster, tests override return_value to
+    simulate a shared multi-member cluster.
+    """
+    with patch("role_handler.count_microovn_cluster_members") as mock:
+        mock.return_value = 1
+        yield mock
+
+
 def _make_role_assignment_relation(
     status: AssignmentStatus | str,
     roles: list[str] | None = None,
@@ -451,15 +463,22 @@ def test_unknown_status_treated_as_pending(
 # --- Role application tests ---
 
 
-def test_disabling_last_central_outside_dataplane_only_blocks(
+def test_disabling_last_central_single_member_cluster_blocks(
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
     mock_call_microovn_command,
     mock_subprocess_run,
     mock_microovn_central_exists,
+    mock_count_cluster_members,
 ):
-    """Local central removal must not use the destructive disable flag."""
+    """Single-member cluster: dropping the last central would destroy DBs, so block.
+
+    Here this node is the only cluster member, so there is no peer that could
+    provide central. The charm must block (not force --allow-disable-last-central,
+    which would destroy the OVN NB/SB databases).
+    """
+    mock_count_cluster_members.return_value = 1
     role_rel = _make_role_assignment_relation(status="assigned", roles=["chassis"])
     mock_call_microovn_command.side_effect = lambda *args: (
         CompletedProcess(args=args, returncode=0, stderr="", stdout="")
@@ -478,9 +497,88 @@ def test_disabling_last_central_outside_dataplane_only_blocks(
         testing.State(relations=[role_rel]),
     ) as manager:
         manager.charm.token_consumer._stored.in_cluster = True
+        out = manager.run()
 
     assert isinstance(manager.charm.unit.status, ops.BlockedStatus)
     assert "last central" in manager.charm.unit.status.message.lower()
+    # A blocking condition must not be deferred for retry.
+    assert len(out.deferred) == 0
+    calls = [call.args for call in mock_call_microovn_command.call_args_list]
+    assert ("disable", "central") in calls
+    assert ("disable", "central", "--allow-disable-last-central") not in calls
+
+
+def test_disabling_last_central_multi_member_cluster_waits_and_retries(
+    mock_microovn_snap,
+    mock_ovn_exporter_snap,
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_subprocess_run,
+    mock_microovn_central_exists,
+    mock_count_cluster_members,
+):
+    """Multi-member (shared) cluster: last-central is transient, so wait and retry.
+
+    In a shared MicroOVN cluster (one cluster across several Juju apps, one per
+    CPU architecture) a peer member can provide central but may not have enabled
+    it yet. This unit must set WaitingStatus and defer instead of blocking, and
+    must never pass --allow-disable-last-central.
+    """
+    mock_count_cluster_members.return_value = 2
+    role_rel = _make_role_assignment_relation(status="assigned", roles=["chassis"])
+    mock_call_microovn_command.side_effect = lambda *args: (
+        CompletedProcess(args=args, returncode=0, stderr="", stdout="")
+        if args == ("enable", "chassis")
+        else CompletedProcess(
+            args=args,
+            returncode=1,
+            stderr="cannot disable last central node",
+            stdout="",
+        )
+    )
+
+    ctx = testing.Context(MicroovnCharm)
+    with ctx(
+        ctx.on.relation_changed(role_rel),
+        testing.State(relations=[role_rel]),
+    ) as manager:
+        manager.charm.token_consumer._stored.in_cluster = True
+        out = manager.run()
+
+    assert isinstance(manager.charm.unit.status, ops.WaitingStatus)
+    assert "central" in manager.charm.unit.status.message.lower()
+    # The event must be deferred so we retry once a peer central is available.
+    assert len(out.deferred) == 1
+    calls = [call.args for call in mock_call_microovn_command.call_args_list]
+    assert ("disable", "central") in calls
+    # Never destroy the shared OVN NB/SB databases.
+    assert ("disable", "central", "--allow-disable-last-central") not in calls
+
+
+def test_disable_central_retries_successfully_once_peer_central_available(
+    mock_microovn_snap,
+    mock_ovn_exporter_snap,
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_subprocess_run,
+    mock_microovn_central_exists,
+):
+    """After a peer central appears, disabling central succeeds and roles apply."""
+    role_rel = _make_role_assignment_relation(status="assigned", roles=["chassis"])
+    # Peer central is now present: disable central succeeds this time.
+    mock_call_microovn_command.return_value = CompletedProcess(
+        args="", returncode=0, stderr="", stdout=""
+    )
+
+    ctx = testing.Context(MicroovnCharm)
+    with ctx(
+        ctx.on.update_status(),
+        testing.State(relations=[role_rel]),
+    ) as manager:
+        manager.charm.token_consumer._stored.in_cluster = True
+        manager.run()
+
+    assert not isinstance(manager.charm.unit.status, (ops.BlockedStatus, ops.WaitingStatus))
     calls = [call.args for call in mock_call_microovn_command.call_args_list]
     assert ("disable", "central") in calls
     assert ("disable", "central", "--allow-disable-last-central") not in calls

@@ -312,6 +312,50 @@ def test_on_update_status_with_ovsdb_relation(
     assert manager.charm.unit.status == ops.ActiveStatus()
 
 
+def test_on_update_status_refreshes_ovsdb_relation_data(
+    mock_check_metrics_endpoint, mock_call_microovn_command, mock_microovn_central_exists
+):
+    """Test update_status re-publishes fresh ovsdb connection strings.
+
+    Regression test for LP#2161300: after the central membership changes, the
+    ovsdb relation data must be refreshed so consumers do not keep trying to
+    connect to a node that is no longer a central member.
+    """
+    from charms.microovn.v0.ovsdb import OVSDBConnectionString
+
+    mock_check_metrics_endpoint.return_value = True
+    fresh = OVSDBConnectionString(
+        nb="ssl:10.21.2.51:6641,ssl:10.21.2.52:6641,ssl:10.21.2.53:6641",
+        sb="ssl:10.21.2.51:6642,ssl:10.21.2.52:6642,ssl:10.21.2.53:6642",
+    )
+
+    ctx = testing.Context(MicroovnCharm)
+    # The relation already advertises a stale central member (.54) and is
+    # missing a current one (.52).
+    ovsdb_relation = testing.Relation(
+        OVSDB_RELATION,
+        local_app_data={
+            "db_nb_connection_str": "ssl:10.21.2.51:6641,ssl:10.21.2.53:6641,ssl:10.21.2.54:6641",
+            "db_sb_connection_str": "ssl:10.21.2.51:6642,ssl:10.21.2.53:6642,ssl:10.21.2.54:6642",
+        },
+    )
+
+    with patch(
+        "charms.microovn.v0.ovsdb.OVSDBProvides.get_connection_strings",
+        return_value=fresh,
+    ):
+        with ctx(
+            ctx.on.update_status(),
+            testing.State(leader=True, relations=[ovsdb_relation]),
+        ) as manager:
+            manager.charm.token_consumer._stored.in_cluster = True
+            out = manager.run()
+
+    data = out.get_relation(ovsdb_relation.id).local_app_data
+    assert data["db_nb_connection_str"] == fresh.nb
+    assert data["db_sb_connection_str"] == fresh.sb
+
+
 def test_on_ovsdbcms_broken(
     mock_check_metrics_endpoint,
     mock_call_microovn_command,
