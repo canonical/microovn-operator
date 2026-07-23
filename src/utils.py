@@ -3,6 +3,7 @@
 
 """Utilities for the charm."""
 
+import json
 import logging
 import subprocess
 
@@ -47,6 +48,34 @@ def microovn_central_exists() -> bool:
         )
         return False
     return "central" in result.stdout
+
+
+def count_microovn_cluster_members() -> int:
+    """Return the number of members in the (potentially shared) microovn cluster.
+
+    Uses microovn cluster list --format json output, which returns one entry per
+    cluster member. Returns 0 when the command fails or its output cannot be parsed.
+
+    This is used to distinguish a genuinely last central node from a transient
+    last-central condition in a cluster shared across multiple juju applications.
+    """
+    result = call_microovn_command("cluster", "list", "--format", "json")
+    if result.returncode != 0:
+        logger.error(
+            "microovn cluster list failed with error code %s, strerr: %s",
+            result.returncode,
+            result.stderr,
+        )
+        return 0
+    try:
+        members = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        logger.error("Could not parse microovn cluster list output: %r", result.stdout)
+        return 0
+    if not isinstance(members, list):
+        logger.error("Unexpected microovn cluster list output: %r", result.stdout)
+        return 0
+    return len(members)
 
 
 @retry(

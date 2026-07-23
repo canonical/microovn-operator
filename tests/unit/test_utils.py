@@ -3,6 +3,7 @@
 
 """Unit tests for the utilities in utils.py."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from requests.exceptions import RequestException
 from utils import (
     call_microovn_command,
     check_metrics_endpoint,
+    count_microovn_cluster_members,
     microovn_central_exists,
     wait_for_microovn_ready,
 )
@@ -167,3 +169,52 @@ def test_microovn_central_exists_failure(mock_subprocess_run):
 
     result = microovn_central_exists()
     assert result is False
+
+
+_MULTI_MEMBER_JSON = json.dumps(
+    [
+        {"name": "node-0", "address": "10.0.0.1:6443", "role": "voter", "status": "ONLINE"},
+        {"name": "node-1", "address": "10.0.0.2:6443", "role": "voter", "status": "ONLINE"},
+    ]
+)
+
+_SINGLE_MEMBER_JSON = json.dumps(
+    [
+        {"name": "node-0", "address": "10.0.0.1:6443", "role": "voter", "status": "ONLINE"},
+    ]
+)
+
+
+def test_count_microovn_cluster_members_multiple(mock_subprocess_run):
+    """Counts one entry per cluster member in the JSON output."""
+    mock_subprocess_run.return_value = MagicMock(returncode=0, stdout=_MULTI_MEMBER_JSON)
+
+    assert count_microovn_cluster_members() == 2
+
+
+def test_count_microovn_cluster_members_single(mock_subprocess_run):
+    """A single-member cluster returns 1."""
+    mock_subprocess_run.return_value = MagicMock(returncode=0, stdout=_SINGLE_MEMBER_JSON)
+
+    assert count_microovn_cluster_members() == 1
+
+
+def test_count_microovn_cluster_members_failure(mock_subprocess_run):
+    """A failed cluster list command returns 0."""
+    mock_subprocess_run.return_value = MagicMock(returncode=1, stdout="")
+
+    assert count_microovn_cluster_members() == 0
+
+
+def test_count_microovn_cluster_members_invalid_json(mock_subprocess_run):
+    """Unparsable output returns 0."""
+    mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="not json")
+
+    assert count_microovn_cluster_members() == 0
+
+
+def test_count_microovn_cluster_members_non_list_json(mock_subprocess_run):
+    """Valid JSON that isn't a list returns 0."""
+    mock_subprocess_run.return_value = MagicMock(returncode=0, stdout='{"unexpected": "shape"}')
+
+    assert count_microovn_cluster_members() == 0

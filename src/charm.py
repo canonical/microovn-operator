@@ -199,6 +199,13 @@ class MicroovnCharm(ops.CharmBase):
             )
             return
 
+        # Re-publish the ovsdb connection strings. The central membership may
+        # have changed (e.g. a node stopped being a central member) without a
+        # relation event firing, leaving stale NB/SB connection strings in the
+        # relation databag. Refreshing here self-heals that stale data so that
+        # consumers do not keep trying to connect to a non-central node.
+        self.ovsdb_provides.update_relation_data()
+
         self.unit.status = ops.ActiveStatus()
 
     def _on_config_changed(self, event: ops.ConfigChangedEvent):
@@ -214,11 +221,16 @@ class MicroovnCharm(ops.CharmBase):
     def _on_role_assignment_changed(self, event) -> None:
         """Handle role assignment changes."""
         self.role_handler.apply(event)
+        # A role change may add or remove the central service on this or other
+        # nodes, changing the set of central members. Refresh the ovsdb
+        # connection strings so consumers learn the new membership.
+        self.ovsdb_provides.update_relation_data()
         self._on_update_status(event)
 
     def _on_role_assignment_revoked(self, event) -> None:
         """Handle role assignment revocation."""
         self.role_handler.revoke(event)
+        self.ovsdb_provides.update_relation_data()
         self._on_update_status(event)
 
     def _on_ovsdbcms_broken(self, event: ops.EventBase) -> None:

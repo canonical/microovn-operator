@@ -89,11 +89,8 @@ def previous_release(track):
         return "26.03"
     else:
         # Assumes we keep our standard release cadance.
-        y, m = track.split(".")
-        if m == "03":
-            return str(int(y) - 1) + ".09"
-        elif m == "09":
-            return y + ".03"
+        y, _ = track.split(".")
+        return str(int(y) - 1) + ".03"
 
 
 def test_integrate_basic(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
