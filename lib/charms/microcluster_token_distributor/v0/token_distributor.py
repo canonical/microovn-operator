@@ -24,7 +24,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 3
+LIBPATCH = 5
 
 
 logger = logging.getLogger(__name__)
@@ -89,29 +89,71 @@ class TokenDistributorProvides(ops.framework.Object):
             self.charm.on[self.relation_name].relation_changed, self._on_token_relation_changed
         )
 
+    def _collect_cross_relation_mirror(self) -> dict[str, str]:
+        """Aggregate mirror data and hostnames across all cluster relations.
+
+        Multiple microcluster applications may relate to the same distributor
+        on separate relations, yet form a single shared cluster.
+        To let the communicator node generate join tokens for every node and
+        let every consumer find its token, hostnames and tokens must be visible
+        on all relations.
+
+        Returns a mapping of mirror key to value, merged across every
+        microcluster-cluster relation. A real (non-empty) token always wins
+        over EMPTY_STRING so a placeholder never clobbers a generated token.
+        """
+        merged: dict[str, str] = {}
+
+        def _record(key: str, value: str) -> None:
+            if not key.startswith(MIRROR_PREFIX):
+                return
+            existing = merged.get(key)
+            # Prefer a real token over an empty placeholder.
+            if existing is None or (existing == EMPTY_STRING and value != EMPTY_STRING):
+                merged[key] = value
+
+        for rel in self.charm.model.relations[self.relation_name]:
+            rel_data = rel.data
+            # Tokens already mirrored on this distributor unit's databag.
+            for k, v in rel_data[self.charm.unit].items():
+                _record(k, v)
+            for unit in rel.units:
+                unit_data = rel_data[unit]
+                # Tokens exposed by consumer units acting as communicators.
+                if unit_data.get("mirror") == "up":
+                    for k, v in unit_data.items():
+                        _record(k, v)
+                # Register every advertised hostname (as a placeholder if we
+                # do not yet have a token for it).
+                hostname = unit_data.get("hostname")
+                if hostname:
+                    merged.setdefault(mirror_id(hostname), EMPTY_STRING)
+
+        return merged
+
     def _handle_mirror(self, relation):
         relation_data = relation.data
         relation_data[self.charm.unit]["mirror"] = "up"
-        for unit in relation.units:
-            if relation_data[unit].get("mirror") == "up":
-                # add all tokens in the other side of the mirror to this side
-                for k, v in relation_data[unit].items():
-                    if MIRROR_PREFIX in k:
-                        relation_data[self.charm.unit][k] = v
 
-            if "hostname" not in relation_data[unit]:
+        merged = self._collect_cross_relation_mirror()
+        local_data = relation_data[self.charm.unit]
+        for key, value in merged.items():
+            current = local_data.get(key)
+            if current == value:
                 continue
-            mirror_key = mirror_id(relation_data[unit]["hostname"])
-            if mirror_key not in relation_data[self.charm.unit]:
-                logger.info("added {0} to mirror".format(mirror_key))
-                relation_data[self.charm.unit][mirror_key] = EMPTY_STRING
+            # Never overwrite a real token we already hold with a placeholder.
+            if current is not None and current != EMPTY_STRING and value == EMPTY_STRING:
+                continue
+            if current is None:
+                logger.info("added {0} to mirror".format(key))
+            local_data[key] = value
 
     def _on_token_relation_changed(self, event: ops.RelationChangedEvent):
         if self.charm.unit.is_leader():
             self._handle_mirror(event.relation)
 
     def _on_leader_elected(self, _: ops.RelationChangedEvent):
-        if relation := self.charm.model.get_relation(self.relation_name):
+        for relation in self.charm.model.relations[self.relation_name]:
             if self.charm.unit.is_leader():
                 relation.data[self.charm.unit]["mirror"] = "up"
                 self._handle_mirror(relation)
@@ -388,15 +430,7 @@ class TokenConsumer(ops.framework.Object):
         self.charm.unit.status = ops.MaintenanceStatus("Joining cluster")
         error, _ = self._call_cluster_command("join", token, *self.join_args_func())
         if error:
-            # The join command may have succeeded on a previous hook
-            # execution that was interrupted before stored state was
-            # committed. Check if we are already in the cluster.
-            check_error, _ = self._call_cluster_command("list", "-f", "json")
-            if check_error:
-                return False
-            logger.info(
-                "cluster already joined, recovering stored state"
-            )
+            return False
         self._stored.in_cluster = True
         self.charm.unit.status = ops.ActiveStatus("Joined cluster")
         self.on.joined.emit(bootstrapper=False)
@@ -439,22 +473,6 @@ class TokenConsumer(ops.framework.Object):
         # could lead to a deadlock if a unit joins and adds data to the mirror
         # before being in the cluster
         if not self._stored.in_cluster and self.charm.unit.is_leader() and not token_in_cluster:
-            # Check if the cluster was already bootstrapped (e.g. from a
-            # previous hook execution that was interrupted before stored state
-            # was committed). If so, recover by updating stored state rather
-            # than attempting a second bootstrap which would fail.
-            check_error, _ = self._call_cluster_command("list", "-f", "json")
-            if not check_error:
-                logger.info(
-                    "cluster already bootstrapped, recovering stored state"
-                )
-                self._stored.in_cluster = True
-                self.charm.unit.status = ops.ActiveStatus("Cluster bootstrapped")
-                self.on.bootstrapped.emit()
-                self.on.joined.emit(bootstrapper=True)
-                self._handle_mirror(event.relation)
-                return
-
             self.on.prebootstrap.emit()
             error, _ = self._call_cluster_command("bootstrap", *self.bootstrap_args_func())
             if error:
