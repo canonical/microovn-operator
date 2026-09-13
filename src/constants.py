@@ -5,7 +5,7 @@
 
 from typing import List, Tuple
 
-from charms.tls_certificates_interface.v4.tls_certificates import CertificateRequestAttributes
+from charmlibs.interfaces.tls_certificates import CertificateRequestAttributes
 
 OVSDB_RELATION = "ovsdb"
 WORKER_RELATION = "cluster"
