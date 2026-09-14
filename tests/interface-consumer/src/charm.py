@@ -7,14 +7,14 @@ import os
 from pathlib import Path
 
 import ops
-from charms.microovn.v0.ovsdb import OVSDBRequires
-from charms.tls_certificates_interface.v4.tls_certificates import (
+from charmlibs.interfaces.tls_certificates import (
     Certificate,
     CertificateRequestAttributes,
     Mode,
     PrivateKey,
     TLSCertificatesRequiresV4,
 )
+from charms.microovn.v0.ovsdb import OVSDBRequires
 
 logger = logging.getLogger(__name__)
 CERTIFICATES_RELATION = "certificates"
@@ -42,6 +42,7 @@ class InterfaceConsumerCharm(ops.CharmBase):
             relationship_name=CERTIFICATES_RELATION,
             certificate_requests=[CSR_ATTRIBUTES],
             mode=Mode.UNIT,
+            refresh_events=[self.on.update_status],
         )
         framework.observe(
             self.certificates.on.certificate_available, self._on_certificates_available
