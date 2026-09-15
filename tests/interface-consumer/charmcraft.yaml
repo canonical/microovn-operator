@@ -41,9 +41,5 @@ requires:
   certificates:
     interface: tls-certificates
 
-charm-libs:
-  - lib: tls_certificates_interface.tls_certificates
-    version: "4"
-
 config:
   options: {}

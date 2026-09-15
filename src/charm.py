@@ -15,11 +15,11 @@ import subprocess
 from functools import cached_property
 
 import ops
+from charmlibs.interfaces.tls_certificates import Mode, TLSCertificatesRequiresV4
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
 from charms.microovn.v0.ovsdb import OVSDBProvides
 from charms.ovn_central_k8s.v0.ovsdb import OVSDBCMSRequires
-from charms.tls_certificates_interface.v4.tls_certificates import Mode, TLSCertificatesRequiresV4
 
 from config import CharmConfig
 from constants import (
@@ -67,6 +67,7 @@ class MicroovnCharm(ops.CharmBase):
             relationship_name=CERTIFICATES_RELATION,
             certificate_requests=[CSR_ATTRIBUTES],
             mode=Mode.APP,
+            refresh_events=[self.on.update_status],
         )
 
         self.ovsdb_provides = OVSDBProvides(
