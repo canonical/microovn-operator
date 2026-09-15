@@ -4,22 +4,21 @@
 """Unit tests for the MicroOVN charm."""
 
 import json
+from dataclasses import replace
 from datetime import timedelta
 from subprocess import DEVNULL, CompletedProcess
 from unittest.mock import ANY, MagicMock, patch
 
 import ops
 import pytest
-from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
-from charms.tls_certificates_interface.v4.tls_certificates import (
-    LIBID as TLS_CERTS_LIBID,
-)
-from charms.tls_certificates_interface.v4.tls_certificates import (
+from charmlibs.interfaces.tls_certificates import (
+    CertificateSigningRequest,
     generate_ca,
     generate_certificate,
     generate_csr,
     generate_private_key,
 )
+from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
 from ops import testing
 from scenario.errors import UncaughtCharmError
 
@@ -433,14 +432,9 @@ def test_on_ovsdbcms_ready(
     assert manager.charm.unit.status == ops.ActiveStatus()
 
 
-def test_on_certificates_available_success(
-    mock_check_metrics_endpoint,
-    mock_call_microovn_command,
-    mock_logger,
-):
-    """Test certificates available event with valid certificate."""
-    ctx = testing.Context(MicroovnCharm)
-
+@pytest.fixture()
+def certificates_state():
+    """Return a provider response and private key persisted by the old TLS library."""
     certs = _generate_test_certificates()
     provider_app_data = {
         "certificates": json.dumps(
@@ -467,7 +461,9 @@ def test_on_certificates_available_success(
     }
     private_key_secret = testing.Secret(
         tracked_content={"private-key": str(certs["requirer_private_key"])},
-        label=f"{TLS_CERTS_LIBID}-private-key-{CERTIFICATES_RELATION}",
+        # Existing deployments must retain the private key created by the v4 library.
+        label=f"afd8c2bccf834997afce12c2706d2ede-private-key-{CERTIFICATES_RELATION}",
+        owner="unit",
     )
 
     certs_relation = testing.Relation(
@@ -475,25 +471,163 @@ def test_on_certificates_available_success(
         remote_app_data=provider_app_data,
         local_app_data=requirer_app_data,
     )
-    state = testing.State(
+    return testing.State(
         relations=[certs_relation],
         secrets=[private_key_secret],
         leader=True,
-    )
+    ), certs
+
+
+@pytest.mark.parametrize("event_name", ["relation_changed", "update_status"])
+def test_on_certificates_available_success(
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_microovn_central_exists,
+    mock_logger,
+    certificates_state,
+    event_name,
+):
+    """Test certificate delivery preserves the existing CSR and private key."""
+    state, certs = certificates_state
+    certs_relation = next(iter(state.relations))
     mock_call_microovn_command.return_value = CompletedProcess(
         args="", returncode=0, stdout="New CA certificate: Issued"
     )
 
     ctx = testing.Context(MicroovnCharm)
-    with (
-        ctx(ctx.on.relation_changed(certs_relation), state) as manager,
-    ):
+    event = (
+        ctx.on.relation_changed(certs_relation)
+        if event_name == "relation_changed"
+        else ctx.on.update_status()
+    )
+    with ctx(event, state) as manager:
         manager.charm.token_consumer._stored.in_cluster = True
+        out = manager.run()
 
     mock_call_microovn_command.assert_called_with(
-        "certificates", "set-ca", "--combined", stdin=ANY
+        "certificates",
+        "set-ca",
+        "--combined",
+        stdin="\n".join(
+            str(certs[key]) for key in ("certificate", "ca_certificate", "requirer_private_key")
+        ),
     )
     mock_logger.info.assert_any_call("CA certificate updated, new certificates issued")
+    assert out.get_relation(certs_relation.id).local_app_data == certs_relation.local_app_data
+
+
+@pytest.mark.parametrize(
+    "renewal_event", ["secret_expired", "update_status", "failed_secret_expired"]
+)
+def test_certificate_renewal(
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_microovn_central_exists,
+    certificates_state,
+    renewal_event,
+):
+    """Renew and install a certificate even when secret-expired is missed or fails."""
+    state, certs = certificates_state
+    relation = next(iter(state.relations))
+    ctx = testing.Context(MicroovnCharm)
+    with ctx(ctx.on.relation_changed(relation), state) as manager:
+        manager.charm.token_consumer._stored.in_cluster = True
+        state = manager.run()
+
+    certificate = certs["certificate"]
+    validity = certificate.expiry_time - certificate.validity_start_time
+    with patch("charmlibs.interfaces.tls_certificates._tls_certificates.datetime") as clock:
+        # Past the normal renewal time, but before the 95% safety threshold.
+        clock.now.return_value = certificate.validity_start_time + validity * 0.91
+        state = ctx.run(ctx.on.update_status(), state)
+        assert state.get_relation(relation.id).local_app_data == relation.local_app_data
+
+        clock.now.return_value = certificate.validity_start_time + validity * 0.96
+        if renewal_event in ("secret_expired", "failed_secret_expired"):
+            certificate_secret = next(
+                secret for secret in state.secrets if "csr" in secret.tracked_content
+            )
+            event = ctx.on.secret_expired(certificate_secret, revision=1)
+            if renewal_event == "failed_secret_expired":
+                with patch.object(
+                    ops.Secret, "get_content", side_effect=ops.ModelError("Secret unavailable")
+                ):
+                    state = ctx.run(event, state)
+                assert state.get_relation(relation.id).local_app_data == relation.local_app_data
+                event = ctx.on.update_status()
+        else:
+            event = ctx.on.update_status()
+        state = ctx.run(event, state)
+        renewed_relation = state.get_relation(relation.id)
+        assert isinstance(renewed_relation, testing.Relation)
+        requests = json.loads(renewed_relation.local_app_data["certificate_signing_requests"])
+        assert len(requests) == 1
+        assert requests[0]["ca"] is True
+        renewed_csr = CertificateSigningRequest.from_string(
+            requests[0]["certificate_signing_request"]
+        )
+        assert renewed_csr != certs["csr"]
+        assert renewed_csr.common_name == "Charmed MicroOVN"
+        assert renewed_csr.matches_private_key(certs["requirer_private_key"])
+        assert "certificate_signing_requests" not in renewed_relation.local_unit_data
+
+        # Further refreshes must not replace a CSR still waiting to be signed.
+        state = ctx.run(ctx.on.update_status(), state)
+        assert state.get_relation(relation.id).local_app_data == renewed_relation.local_app_data
+
+        renewed_certificate = generate_certificate(
+            csr=renewed_csr,
+            ca=certs["ca_certificate"],
+            ca_private_key=certs["ca_private_key"],
+            validity=timedelta(days=365),
+            is_ca=True,
+        )
+        provider_certificates = json.loads(renewed_relation.remote_app_data["certificates"])
+        provider_certificates.append(
+            {
+                "ca": str(certs["ca_certificate"]),
+                "certificate_signing_request": str(renewed_csr),
+                "certificate": str(renewed_certificate),
+                "chain": [str(renewed_certificate), str(certs["ca_certificate"])],
+                "revoked": False,
+            }
+        )
+        renewed_relation = replace(
+            renewed_relation,
+            remote_app_data={"certificates": json.dumps(provider_certificates)},
+        )
+        mock_call_microovn_command.reset_mock()
+        ctx.run(
+            ctx.on.relation_changed(renewed_relation),
+            replace(state, relations=[renewed_relation]),
+        )
+
+    mock_call_microovn_command.assert_called_once_with(
+        "certificates",
+        "set-ca",
+        "--combined",
+        stdin=f"{renewed_certificate}\n{certs['ca_certificate']}\n{certs['requirer_private_key']}",
+    )
+
+
+def test_certificate_refresh_non_leader(
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_microovn_central_exists,
+    certificates_state,
+):
+    """Non-leaders must not change application CSRs or install certificates."""
+    state, _ = certificates_state
+    relation = next(iter(state.relations))
+    ctx = testing.Context(MicroovnCharm)
+
+    with ctx(ctx.on.update_status(), replace(state, leader=False)) as manager:
+        manager.charm.token_consumer._stored.in_cluster = True
+        out = manager.run()
+
+    assert out.get_relation(relation.id).local_app_data == relation.local_app_data
+    assert "certificate_signing_requests" not in out.get_relation(relation.id).local_unit_data
+    mock_call_microovn_command.assert_not_called()
 
 
 def test_on_certificates_available_defers_when_not_in_cluster(
