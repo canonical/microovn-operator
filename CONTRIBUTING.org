@@ -98,6 +98,14 @@ Build the charms in this git repository using:
 make build-all
 #+end_src
 
+The git revision the microovn charm was built from is recorded in a
+~version~ file at the root of the charm, as produced by
+~git describe --always --dirty~. Juju reports it as the charm version, so
+the commit a deployed unit was built from can be found with:
+#+begin_src shell
+juju status --format=yaml | grep charm-version
+#+end_src
+
 ** Clean the build environment
 Remove files created during build with:
 #+begin_src shell

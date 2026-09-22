@@ -69,6 +69,33 @@ parts:
     build-environment:
       - PIP_CONSTRAINT: constraints.txt
       - MATURIN_NO_INSTALL_RUST: "1"
+  # Record the git revision the charm was built from in a `version` file at the
+  # root of the charm.  Juju surfaces this as `charm-version`, for example in
+  # `juju status --format=yaml`, which makes it possible to tell exactly which
+  # commit a deployed charm was built from.
+  version-file:
+    plugin: nil
+    # The source is not used by the build below, it is declared so that this
+    # part is rebuilt whenever anything in the repository changes, including
+    # .git.  Without it the part would only ever run once per build instance
+    # and incremental local builds would embed a stale revision.
+    source: .
+    build-packages:
+      - git
+    override-build: |
+      # The revision is read from the project directory rather than from
+      # $CRAFT_PART_SRC because charmcraft omits charmcraft.yaml from the
+      # copied part source, which would make the tree look dirty.  The project
+      # directory is not owned by the user running the build, so git needs to
+      # be told that it is trustworthy.
+      git config --global --add safe.directory "$CRAFT_PROJECT_DIR"
+      version="$(git -C "$CRAFT_PROJECT_DIR" describe --always --dirty 2>/dev/null || true)"
+      if [ -z "$version" ]; then
+        echo "WARNING: unable to determine git revision, charm version will be 'unknown'" >&2
+        version=unknown
+      fi
+      echo "Charm version: $version"
+      echo "$version" > "$CRAFT_PART_INSTALL/version"
 
 config:
   options:
