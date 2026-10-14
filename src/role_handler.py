@@ -36,12 +36,12 @@ class Role(enum.StrEnum):
     GATEWAY = "gateway"
 
 
-class ProcessCallResult(enum.Enum):
-    """Outcome of a subprocess call performed by RoleHandler."""
+class RoleResult(enum.Enum):
+    """Outcome of role validation or application performed by RoleHandler."""
 
     OK = enum.auto()
     FAILED = enum.auto()
-    # The call did not succeed but the condition is expected to be transient.
+    # The assignment or operation is pending and expected to be transient.
     # The caller should wait and retry rather than treat this as a failure.
     RETRY = enum.auto()
 
@@ -100,21 +100,21 @@ class RoleHandler(ops.Object):
 
     def _resolve_assignment_roles(
         self, status: AssignmentStatus | str, roles: tuple[str, ...], message: str | None
-    ) -> set[str] | None:
-        """Translate assignment status into a unit status or a normalized role set."""
+    ) -> tuple[RoleResult, set[str] | None]:
+        """Resolve assignment status into an outcome and normalized roles."""
         match AssignmentStatus.coerce(status):
             case AssignmentStatus.ERROR:
                 self._charm.unit.status = ops.BlockedStatus(f"Role assignment error: {message}")
-                return None
+                return RoleResult.FAILED, None
             case AssignmentStatus.ASSIGNED:
-                return self._normalize_roles(set(roles))
+                return RoleResult.OK, self._normalize_roles(set(roles))
             case _:
                 self._charm.unit.status = ops.WaitingStatus("Waiting for role assignment")
-                return None
+                return RoleResult.RETRY, None
 
     def apply(self, event: RoleAssignmentChangedEvent) -> None:
         """Apply roles from a role assignment changed event."""
-        roles = self._resolve_assignment_roles(event.status, event.roles, event.message)
+        _, roles = self._resolve_assignment_roles(event.status, event.roles, event.message)
         if roles is None:
             return
         if not self._charm.is_in_cluster:
@@ -122,7 +122,7 @@ class RoleHandler(ops.Object):
             event.defer()
             return
 
-        if self.enforce_roles(roles) is ProcessCallResult.RETRY:
+        if self.enforce_roles(roles) is RoleResult.RETRY:
             # A peer application sharing this MicroOVN cluster may still
             # be enabling its central nodes. Defer so we retry once the
             # cluster has another central available.
@@ -138,7 +138,7 @@ class RoleHandler(ops.Object):
         logger.info("Role assignment relation broken, keeping current workload state")
         self._clear_applied_roles()
 
-    def enforce_roles(self, roles: set[str] | None = None) -> ProcessCallResult:
+    def enforce_roles(self, roles: set[str] | None = None) -> RoleResult:
         """Enforce role assignment constraints and apply roles if needed.
 
         This is the single entry point for role enforcement, callable from
@@ -148,35 +148,39 @@ class RoleHandler(ops.Object):
         Does nothing when no role-assignment relation exists and no roles
         are provided.
 
-        Returns the outcome of the role application.
-        RETRY means the operation is pending because central could not be
-        disabled yet (it is currently the last central in a shared cluster)
-        and callers handling an event should defer.
-        Non-mutating paths return OK.
+        Returns OK when roles are valid and applied, or no relation exists.
+        A relation without this unit's assignment is pending and returns RETRY.
+        FAILED means the assignment is rejected or a role operation failed.
+        RETRY means the assignment or a role operation is pending. Callers
+        must preserve the status set by FAILED or RETRY; OK allows further
+        health checks even when a previous check left a stale status.
         """
         if roles is None:
             assignment = self.get_assignment()
             if assignment is None:
-                return ProcessCallResult.OK
-            roles = self._resolve_assignment_roles(
+                if self.has_relation:
+                    self._charm.unit.status = ops.WaitingStatus("Waiting for role assignment")
+                    return RoleResult.RETRY
+                return RoleResult.OK
+            result, roles = self._resolve_assignment_roles(
                 assignment.status, assignment.roles, assignment.message
             )
             if roles is None:
-                return ProcessCallResult.OK
+                return result
 
         if not roles:
             self._charm.unit.status = ops.BlockedStatus("No recognized roles assigned")
-            return ProcessCallResult.OK
+            return RoleResult.FAILED
 
         dataplane_only = self._charm.is_dataplane_only
         if Role.GATEWAY in roles and Role.CHASSIS not in roles:
             self._charm.unit.status = ops.BlockedStatus("Gateway role requires chassis role")
-            return ProcessCallResult.OK
+            return RoleResult.FAILED
         if dataplane_only and Role.CENTRAL in roles:
             self._charm.unit.status = ops.BlockedStatus(
                 "Cannot enable central while in dataplane-only mode"
             )
-            return ProcessCallResult.OK
+            return RoleResult.FAILED
 
         previously_applied = self._get_applied_roles()
         if previously_applied == roles and self._applied_dataplane_only() == dataplane_only:
@@ -185,10 +189,10 @@ class RoleHandler(ops.Object):
                 roles,
                 dataplane_only,
             )
-            return ProcessCallResult.OK
+            return RoleResult.OK
 
         result = self._apply_roles(roles, dataplane_only=dataplane_only)
-        if result is ProcessCallResult.RETRY:
+        if result is RoleResult.RETRY:
             self._charm.unit.status = ops.WaitingStatus(
                 "Waiting for another central node in the cluster before disabling central"
             )
@@ -203,39 +207,39 @@ class RoleHandler(ops.Object):
             logger.warning("Ignoring unrecognized roles: %s", unknown_roles)
         return roles & known_values
 
-    def _apply_roles(self, roles: set[str], *, dataplane_only: bool) -> ProcessCallResult:
+    def _apply_roles(self, roles: set[str], *, dataplane_only: bool) -> RoleResult:
         desired_central = Role.CENTRAL in roles
         desired_chassis = Role.CHASSIS in roles
         desired_gateway = Role.GATEWAY in roles
 
-        if not desired_gateway and self._disable_gateway() is not ProcessCallResult.OK:
-            return ProcessCallResult.FAILED
+        if not desired_gateway and self._disable_gateway() is not RoleResult.OK:
+            return RoleResult.FAILED
 
         if desired_chassis:
-            if self._enable_chassis() is not ProcessCallResult.OK:
-                return ProcessCallResult.FAILED
-        elif self._disable_chassis() is not ProcessCallResult.OK:
-            return ProcessCallResult.FAILED
+            if self._enable_chassis() is not RoleResult.OK:
+                return RoleResult.FAILED
+        elif self._disable_chassis() is not RoleResult.OK:
+            return RoleResult.FAILED
 
         if desired_central:
-            if self._enable_central() is not ProcessCallResult.OK:
-                return ProcessCallResult.FAILED
+            if self._enable_central() is not RoleResult.OK:
+                return RoleResult.FAILED
         else:
             result = self._disable_central(allow_disable_last=dataplane_only)
-            if result is not ProcessCallResult.OK:
+            if result is not RoleResult.OK:
                 # Propagate the transient last-central case so the caller can
                 # wait and retry instead of blocking permanently.
                 return result
 
-        if desired_gateway and self._enable_gateway() is not ProcessCallResult.OK:
-            return ProcessCallResult.FAILED
+        if desired_gateway and self._enable_gateway() is not RoleResult.OK:
+            return RoleResult.FAILED
 
         self._save_applied_roles(roles)
-        return ProcessCallResult.OK
+        return RoleResult.OK
 
     def _set_service_enabled(
         self, service: Role, enabled: bool, *, allow_disable_last: bool = False
-    ) -> ProcessCallResult:
+    ) -> RoleResult:
         action = "enable" if enabled else "disable"
         command = [action, service.value]
         if service is Role.CENTRAL and not enabled and allow_disable_last:
@@ -243,15 +247,15 @@ class RoleHandler(ops.Object):
 
         res = call_microovn_command(*command)
         if res.returncode == 0:
-            return ProcessCallResult.OK
+            return RoleResult.OK
 
         service_name = service.value.capitalize()
         if enabled and "this service is already enabled" in res.stderr:
             logger.info("%s service already enabled", service_name)
-            return ProcessCallResult.OK
+            return RoleResult.OK
         if not enabled and "this service is not enabled" in res.stderr:
             logger.info("%s service already disabled", service_name)
-            return ProcessCallResult.OK
+            return RoleResult.OK
         if service is Role.CENTRAL and not enabled and not allow_disable_last:
             if "last central" in res.stderr.lower():
                 # - Single-member cluster: this really is the last central and
@@ -266,7 +270,7 @@ class RoleHandler(ops.Object):
                         "multi-member cluster. Waiting for a peer central node before "
                         "retrying."
                     )
-                    return ProcessCallResult.RETRY
+                    return RoleResult.RETRY
 
                 logger.error(
                     "Refusing to disable the last central node of a single-member "
@@ -275,7 +279,7 @@ class RoleHandler(ops.Object):
                 self._charm.unit.status = ops.BlockedStatus(
                     "Cannot disable the last central node outside dataplane-only mode"
                 )
-                return ProcessCallResult.FAILED
+                return RoleResult.FAILED
 
         logger.error(
             "microovn %s %s failed with code %s, stderr: %s",
@@ -285,29 +289,29 @@ class RoleHandler(ops.Object):
             res.stderr,
         )
         self._charm.unit.status = ops.BlockedStatus(f"Failed to {action} {service.value} service")
-        return ProcessCallResult.FAILED
+        return RoleResult.FAILED
 
-    def _enable_central(self) -> ProcessCallResult:
+    def _enable_central(self) -> RoleResult:
         return self._set_service_enabled(Role.CENTRAL, enabled=True)
 
-    def _enable_chassis(self) -> ProcessCallResult:
+    def _enable_chassis(self) -> RoleResult:
         return self._set_service_enabled(Role.CHASSIS, enabled=True)
 
-    def _disable_chassis(self) -> ProcessCallResult:
+    def _disable_chassis(self) -> RoleResult:
         return self._set_service_enabled(Role.CHASSIS, enabled=False)
 
-    def _disable_central(self, *, allow_disable_last: bool = False) -> ProcessCallResult:
+    def _disable_central(self, *, allow_disable_last: bool = False) -> RoleResult:
         return self._set_service_enabled(
             Role.CENTRAL, enabled=False, allow_disable_last=allow_disable_last
         )
 
-    def _enable_gateway(self) -> ProcessCallResult:
+    def _enable_gateway(self) -> RoleResult:
         return self._set_gateway_option(enable=True)
 
-    def _disable_gateway(self) -> ProcessCallResult:
+    def _disable_gateway(self) -> RoleResult:
         return self._set_gateway_option(enable=False)
 
-    def _set_gateway_option(self, *, enable: bool) -> ProcessCallResult:
+    def _set_gateway_option(self, *, enable: bool) -> RoleResult:
         res = subprocess.run(
             ["microovn.ovs-vsctl", "get", "open_vswitch", ".", "external-ids:ovn-cms-options"],
             capture_output=True,
@@ -322,14 +326,14 @@ class RoleHandler(ops.Object):
                     res.stderr,
                 )
                 self._charm.unit.status = ops.BlockedStatus("Failed to read gateway configuration")
-                return ProcessCallResult.FAILED
+                return RoleResult.FAILED
             # Key absent, safe to treat as empty on enable,
             # nothing to remove on disable.
             if enable:
                 current_options: set[str] = set()
             else:
                 logger.info("ovn-cms-options key absent, nothing to disable for gateway")
-                return ProcessCallResult.OK
+                return RoleResult.OK
         else:
             raw = res.stdout.strip().strip('"')
             current_options = {o.strip() for o in raw.split(",") if o.strip()}
@@ -342,7 +346,7 @@ class RoleHandler(ops.Object):
 
         if desired == current_options:
             logger.info("Gateway option already in desired state")
-            return ProcessCallResult.OK
+            return RoleResult.OK
 
         new_value = ",".join(sorted(desired))
         if new_value:
@@ -370,5 +374,5 @@ class RoleHandler(ops.Object):
                 res.stderr,
             )
             self._charm.unit.status = ops.BlockedStatus("Failed to update gateway configuration")
-            return ProcessCallResult.FAILED
-        return ProcessCallResult.OK
+            return RoleResult.FAILED
+        return RoleResult.OK

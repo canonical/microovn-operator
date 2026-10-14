@@ -44,7 +44,7 @@ from constants import (
     ROLE_ASSIGNMENT_RELATION,
     WORKER_RELATION,
 )
-from role_handler import RoleHandler
+from role_handler import RoleHandler, RoleResult
 from snap_manager import SnapManager
 from utils import (
     call_microovn_command,
@@ -181,8 +181,12 @@ class MicroovnCharm(ops.CharmBase):
 
         # Re-evaluate role assignment constraints on every status check
         if self.role_handler.has_relation:
-            self.role_handler.enforce_roles()
-            if isinstance(self.unit.status, (ops.BlockedStatus, ops.WaitingStatus)):
+            if self.role_handler.enforce_roles() is not RoleResult.OK:
+                return
+
+        if self.is_dataplane_only and self.unit.is_leader():
+            if not self._set_central_ips_config():
+                self.unit.status = ops.BlockedStatus("Failed to switch to dataplane mode")
                 return
 
         if self.is_in_cluster and not self.has_ovsdbcmd_relation and not microovn_central_exists():

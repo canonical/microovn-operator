@@ -4,7 +4,7 @@
 """Unit tests for the RoleHandler."""
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from subprocess import CompletedProcess
 from unittest.mock import MagicMock, patch
 
@@ -854,47 +854,266 @@ def test_update_status_enforces_role_constraints(
     mock_call_microovn_command.assert_any_call("enable", "central")
 
 
-def test_update_status_pending_stays_waiting(
+@pytest.mark.parametrize("failed_check", ["backend", "exporter"])
+@pytest.mark.parametrize("recovered", [False, True])
+def test_update_status_rechecks_health_with_applied_roles(
+    mock_microovn_snap,
+    mock_ovn_exporter_snap,
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_subprocess_run,
+    mock_microovn_central_exists,
+    failed_check,
+    recovered,
+):
+    """Unchanged valid roles must not prevent backend or exporter reconciliation."""
+    role_rel = _make_role_assignment_relation(status="assigned", roles=["central", "chassis"])
+    ctx = testing.Context(MicroovnCharm)
+    with ctx(ctx.on.update_status(), testing.State(relations=[role_rel])) as manager:
+        manager.charm.token_consumer._stored.in_cluster = True
+        state = manager.run()
+    assert state.unit_status == ops.ActiveStatus()
+
+    mock_microovn_central_exists.return_value = failed_check != "backend"
+    mock_check_metrics_endpoint.return_value = failed_check != "exporter"
+    state = ctx.run(ctx.on.update_status(), state)
+    assert isinstance(state.unit_status, ops.BlockedStatus)
+    blocked_status = state.unit_status
+
+    mock_microovn_central_exists.reset_mock()
+    mock_check_metrics_endpoint.reset_mock()
+    mock_call_microovn_command.reset_mock()
+    mock_subprocess_run.reset_mock()
+    if recovered:
+        mock_microovn_central_exists.return_value = True
+        mock_check_metrics_endpoint.return_value = True
+    state = ctx.run(ctx.on.update_status(), state)
+
+    assert state.unit_status == (ops.ActiveStatus() if recovered else blocked_status)
+    mock_microovn_central_exists.assert_called_once_with()
+    if failed_check == "backend" and not recovered:
+        mock_check_metrics_endpoint.assert_not_called()
+    else:
+        mock_check_metrics_endpoint.assert_called_once()
+    mock_call_microovn_command.assert_not_called()
+    mock_subprocess_run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "config_recovers, exporter_healthy",
+    [(False, True), (True, False), (True, True)],
+)
+def test_update_status_retries_failed_dataplane_config(
+    mock_microovn_snap,
+    mock_ovn_exporter_snap,
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_subprocess_run,
+    mock_microovn_central_exists,
+    config_recovers,
+    exporter_healthy,
+):
+    """Only successful dataplane configuration and health checks allow Active."""
+    role_rel = _make_role_assignment_relation("assigned", ["chassis"])
+    external_rel = testing.Relation(
+        OVSDBCMD_RELATION, remote_app_data={"loadbalancer-address": "192.0.2.16"}
+    )
+    ctx = testing.Context(MicroovnCharm)
+    with patch("charm.call_microovn_command") as workload:
+        workload.side_effect = lambda *args: CompletedProcess(
+            args=args,
+            returncode=int(args[:2] == ("config", "set")),
+            stdout="",
+            stderr="configuration failed",
+        )
+        with ctx(
+            ctx.on.relation_changed(external_rel),
+            testing.State(relations=[role_rel, external_rel], leader=True),
+        ) as manager:
+            manager.charm.token_consumer._stored.in_cluster = True
+            state = manager.run()
+        assert state.unit_status == ops.BlockedStatus("Failed to switch to dataplane mode")
+        workload.assert_any_call("config", "set", "ovn.central-ips", "192.0.2.16")
+
+        workload.reset_mock()
+        workload.side_effect = None
+        workload.return_value = CompletedProcess(
+            args="", returncode=0 if config_recovers else 1, stdout="", stderr="error"
+        )
+        mock_check_metrics_endpoint.return_value = exporter_healthy
+        state = ctx.run(ctx.on.update_status(), state)
+        workload.assert_called_once_with("config", "set", "ovn.central-ips", "192.0.2.16")
+        mock_microovn_central_exists.assert_not_called()
+        if not config_recovers:
+            assert state.unit_status == ops.BlockedStatus("Failed to switch to dataplane mode")
+            mock_check_metrics_endpoint.assert_not_called()
+        elif not exporter_healthy:
+            assert state.unit_status == ops.BlockedStatus(
+                "ovn-exporter metrics endpoint is not responding, check snap service status"
+            )
+        else:
+            assert state.unit_status == ops.ActiveStatus()
+
+        workload.reset_mock()
+        mock_call_microovn_command.reset_mock()
+        mock_subprocess_run.reset_mock()
+        workload.return_value = CompletedProcess(args="", returncode=0, stdout="", stderr="")
+        mock_check_metrics_endpoint.return_value = True
+        state = ctx.run(ctx.on.update_status(), state)
+        assert state.unit_status == ops.ActiveStatus()
+        workload.assert_called_once_with("config", "set", "ovn.central-ips", "192.0.2.16")
+        mock_call_microovn_command.assert_not_called()
+        mock_subprocess_run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "assignment_status, roles, expected_status",
+    [
+        ("pending", [], ops.WaitingStatus("Waiting for role assignment")),
+        ("unknown", [], ops.WaitingStatus("Waiting for role assignment")),
+        ("error", [], ops.BlockedStatus("Role assignment error: bad config")),
+        ("assigned", [], ops.BlockedStatus("No recognized roles assigned")),
+        ("assigned", ["gateway"], ops.BlockedStatus("Gateway role requires chassis role")),
+    ],
+)
+def test_update_status_role_rejection_gates_health_checks(
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
     mock_call_microovn_command,
     mock_microovn_central_exists,
+    assignment_status,
+    roles,
+    expected_status,
 ):
-    """update-status with pending assignment should show WaitingStatus."""
-    role_rel = _make_role_assignment_relation(status="pending")
-
+    """Current invalid or pending assignments must gate otherwise healthy checks."""
+    role_rel = _make_role_assignment_relation(assignment_status, roles, message="bad config")
     ctx = testing.Context(MicroovnCharm)
-    with ctx(
-        ctx.on.update_status(),
-        testing.State(relations=[role_rel]),
-    ) as manager:
+    with ctx(ctx.on.update_status(), testing.State(relations=[role_rel])) as manager:
         manager.charm.token_consumer._stored.in_cluster = True
+        state = manager.run()
 
-    assert isinstance(manager.charm.unit.status, ops.WaitingStatus)
+    assert state.unit_status == expected_status
+    mock_microovn_central_exists.assert_not_called()
+    mock_check_metrics_endpoint.assert_not_called()
     mock_call_microovn_command.assert_not_called()
 
 
-def test_update_status_error_stays_blocked(
+@pytest.mark.parametrize("pending", [False, True])
+def test_update_status_role_operation_gates_health_checks(
+    mock_microovn_snap,
+    mock_ovn_exporter_snap,
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_subprocess_run,
+    mock_microovn_central_exists,
+    mock_count_cluster_members,
+    pending,
+):
+    """Failed or pending role operations must not be overwritten by health checks."""
+    role_rel = _make_role_assignment_relation("assigned", ["chassis"])
+    mock_count_cluster_members.return_value = 2
+    mock_call_microovn_command.side_effect = lambda *args: CompletedProcess(
+        args=args,
+        returncode=int(args == ("disable", "central")),
+        stderr="cannot disable last central node" if pending else "service failed",
+        stdout="",
+    )
+    ctx = testing.Context(MicroovnCharm)
+    with ctx(ctx.on.update_status(), testing.State(relations=[role_rel])) as manager:
+        manager.charm.token_consumer._stored.in_cluster = True
+        state = manager.run()
+
+    if pending:
+        assert state.unit_status == ops.WaitingStatus(
+            "Waiting for another central node in the cluster before disabling central"
+        )
+    else:
+        assert state.unit_status == ops.BlockedStatus("Failed to disable central service")
+    mock_microovn_central_exists.assert_not_called()
+    mock_check_metrics_endpoint.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "remote_app_data",
+    [
+        {},
+        {"assignments": "{}"},
+        {"assignments": json.dumps({"microovn/99": {"status": "assigned", "roles": ["chassis"]}})},
+    ],
+)
+def test_update_status_missing_assignment_waits(
     mock_microovn_snap,
     mock_ovn_exporter_snap,
     mock_check_metrics_endpoint,
     mock_call_microovn_command,
     mock_microovn_central_exists,
+    remote_app_data,
 ):
-    """update-status with error assignment should show BlockedStatus."""
-    role_rel = _make_role_assignment_relation(status="error", message="bad config")
-
+    """An existing relation without this unit's assignment must gate health checks."""
+    role_rel = testing.Relation(ROLE_ASSIGNMENT_RELATION, remote_app_data=remote_app_data)
     ctx = testing.Context(MicroovnCharm)
-    with ctx(
-        ctx.on.update_status(),
-        testing.State(relations=[role_rel]),
-    ) as manager:
+    with ctx(ctx.on.update_status(), testing.State(relations=[role_rel])) as manager:
         manager.charm.token_consumer._stored.in_cluster = True
+        state = manager.run()
 
-    assert isinstance(manager.charm.unit.status, ops.BlockedStatus)
-    assert "bad config" in manager.charm.unit.status.message
+    assert state.unit_status == ops.WaitingStatus("Waiting for role assignment")
+    mock_microovn_central_exists.assert_not_called()
+    mock_check_metrics_endpoint.assert_not_called()
     mock_call_microovn_command.assert_not_called()
+
+
+@pytest.mark.parametrize("initial_status", ["pending", "error", "assigned"])
+def test_update_status_removed_assignment_waits_until_reassigned(
+    mock_microovn_snap,
+    mock_ovn_exporter_snap,
+    mock_check_metrics_endpoint,
+    mock_call_microovn_command,
+    mock_subprocess_run,
+    mock_microovn_central_exists,
+    initial_status,
+):
+    """Removing a unit entry must wait without changing workload or cached roles."""
+    role_rel = _make_role_assignment_relation(initial_status, ["central", "chassis"])
+    ctx = testing.Context(MicroovnCharm)
+    with ctx(ctx.on.update_status(), testing.State(relations=[role_rel])) as manager:
+        manager.charm.token_consumer._stored.in_cluster = True
+        state = manager.run()
+        applied_roles = manager.charm.role_handler._get_applied_roles()
+    expected_status = {
+        "pending": ops.WaitingStatus("Waiting for role assignment"),
+        "error": ops.BlockedStatus("Role assignment error: None"),
+        "assigned": ops.ActiveStatus(),
+    }
+    assert state.unit_status == expected_status[initial_status]
+
+    mock_microovn_central_exists.reset_mock()
+    mock_check_metrics_endpoint.reset_mock()
+    mock_call_microovn_command.reset_mock()
+    mock_subprocess_run.reset_mock()
+    missing_assignment = replace(role_rel, remote_app_data={"assignments": "{}"})
+    state = replace(state, relations=frozenset([missing_assignment]))
+    with ctx(ctx.on.update_status(), state) as manager:
+        state = manager.run()
+        assert manager.charm.role_handler._get_applied_roles() == applied_roles
+
+    assert state.unit_status == ops.WaitingStatus("Waiting for role assignment")
+    mock_microovn_central_exists.assert_not_called()
+    mock_check_metrics_endpoint.assert_not_called()
+    mock_call_microovn_command.assert_not_called()
+    mock_subprocess_run.assert_not_called()
+
+    restored_assignment = replace(
+        role_rel,
+        remote_app_data=_make_role_assignment_relation(
+            "assigned", ["central", "chassis"]
+        ).remote_app_data,
+    )
+    state = replace(state, relations=frozenset([restored_assignment]))
+    state = ctx.run(ctx.on.update_status(), state)
+    assert state.unit_status == ops.ActiveStatus()
+    mock_microovn_central_exists.assert_called_once_with()
+    mock_check_metrics_endpoint.assert_called_once()
 
 
 def test_update_status_no_role_relation_active(
@@ -1198,6 +1417,8 @@ def test_control_role_then_ready_ovsdb_external_added_blocks_on_update_status(
 
     assert isinstance(manager.charm.unit.status, ops.BlockedStatus)
     assert "dataplane-only" in manager.charm.unit.status.message
+    mock_microovn_central_exists.assert_not_called()
+    mock_check_metrics_endpoint.assert_not_called()
 
 
 # --- Chassis-only role + later ovsdb-external removal stays valid on update-status ---
