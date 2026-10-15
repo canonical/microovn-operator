@@ -176,7 +176,10 @@ class MicroovnCharm(ops.CharmBase):
     def _on_update_status(self, _: ops.EventBase) -> None:
         """Update the unit status."""
         if not self.is_in_cluster:
-            self.unit.status = ops.MaintenanceStatus("Waiting for token distrbutor relation")
+            if not self.model.get_relation(WORKER_RELATION):
+                self.unit.status = ops.MaintenanceStatus("Waiting for token distributor relation")
+            elif not isinstance(self.unit.status, ops.BlockedStatus):
+                self.unit.status = ops.WaitingStatus("Waiting for cluster join token")
             return
 
         # Re-evaluate role assignment constraints on every status check
