@@ -2,6 +2,7 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -104,6 +105,76 @@ def test_integrate_basic(juju_lxd: jubilant.Juju, charm_path: Path, app_name: st
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
     juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
     juju_lxd.exec("microovn status", unit=f"{app_name}/1")
+
+
+def _join_token_digest(juju: jubilant.Juju, unit: str, distributor_unit: str) -> str:
+    """Read the token for a unit's request, returning a digest for comparisons."""
+
+    def relation_data(local_unit: str, remote_unit: str) -> dict[str, str]:
+        output = juju.cli(
+            "show-unit", local_unit, "--format", "json", "--related-unit", remote_unit
+        )
+        relations = json.loads(output)[local_unit]["relation-info"]
+        return relations[0]["related-units"][remote_unit]["data"]
+
+    request = relation_data(distributor_unit, unit)
+    mirror = relation_data(unit, distributor_unit)
+    key = f"mirror-{request['hostname']}:{request['token-request-id']}"
+    token = mirror[key]
+    assert token and token != "empty"
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def test_readd_same_hostname(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
+    """A fresh unit on a removed unit's hostname must receive a fresh join token."""
+    juju_lxd.deploy(charm_path, app=app_name)
+    # Allow testing the shared library before the distributor release reaches Charmhub.
+    if distributor_path := os.environ.get("TOKEN_DISTRIBUTOR_CHARM_PATH"):
+        juju_lxd.deploy(Path(distributor_path), app=TOKEN_DISTRIBUTOR_CHARM)
+    else:
+        juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
+    juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
+    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
+
+    # The distributor keeps this machine alive while the MicroOVN unit is removed.
+    distributor_unit = f"{TOKEN_DISTRIBUTOR_CHARM}/0"
+    machine = juju_lxd.status().apps[TOKEN_DISTRIBUTOR_CHARM].units[distributor_unit].machine
+    assert machine is not None
+    hostname = juju_lxd.exec("hostname", unit=distributor_unit).stdout.strip()
+    token_digests = set()
+
+    for unit_number in range(1, 4):
+        unit = f"{app_name}/{unit_number}"
+        juju_lxd.add_unit(app_name, to=machine)
+        juju_lxd.wait(
+            lambda status: unit in status.apps[app_name].units and jubilant.all_active(status),
+            timeout=DEFAULT_TIMEOUT,
+        )
+        juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
+        assert juju_lxd.exec("hostname", unit=unit).stdout.strip() == hostname
+        digest = _join_token_digest(juju_lxd, unit, distributor_unit)
+        assert digest not in token_digests
+        token_digests.add(digest)
+
+        members = json.loads(
+            juju_lxd.exec("microovn cluster list -f json", unit=f"{app_name}/0").stdout
+        )
+        assert len(members) == 2
+        assert any(
+            member["name"] == hostname and member["status"] == "ONLINE" for member in members
+        )
+
+        juju_lxd.remove_unit(unit)
+        juju_lxd.wait(
+            lambda status: unit not in status.apps[app_name].units,
+            timeout=DEFAULT_TIMEOUT,
+        )
+        juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
+        members = json.loads(
+            juju_lxd.exec("microovn cluster list -f json", unit=f"{app_name}/0").stdout
+        )
+        assert len(members) == 1
+        assert members[0]["name"] != hostname
 
 
 def test_integrate_post_start(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
