@@ -119,7 +119,7 @@ def _join_token_digest(juju: jubilant.Juju, unit: str, distributor_unit: str) ->
 
     request = relation_data(distributor_unit, unit)
     mirror = relation_data(unit, distributor_unit)
-    key = f"mirror-{request['hostname']}:{request['token-request-id']}"
+    key = f"mirror-{request['hostname']}"
     token = mirror[key]
     assert token and token != "empty"
     return hashlib.sha256(token.encode()).hexdigest()

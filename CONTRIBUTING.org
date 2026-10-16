@@ -4,16 +4,16 @@ The token distributor library and its unit tests are maintained in
 [[https://github.com/canonical/microcluster-token-distributor-operator][microcluster-token-distributor-operator]]. Publish library changes from that
 project, then update the vendored copy here in a library-version update commit.
 
-The fix for [[https://bugs.launchpad.net/microovn-operator/+bug/2170962][LP#2170962]] adds a persistent, per-unit ~token-request-id~.
-The distributor mirrors tokens under ~mirror-<hostname>:<request-id>~;
-the MicroOVN communicator still generates them for the real hostname.
+The fix for [[https://bugs.launchpad.net/microovn-operator/+bug/2170962][LP#2170962]] advertises ~<hostname>:<request-id>~ in the existing
+~hostname~ field. Distributors mirror that opaque key unchanged, while the
+MicroOVN communicator generates tokens for the real hostname.
 New units never fall back to hostname-only tokens, which may have already
 been consumed by a removed unit. Joined legacy units retain their requests.
 
-Release this library update in both charms. Upgrade the token distributor
-and all MicroOVN applications sharing it before adding replacement units.
-New requests wait until both the distributor and the communicator support
-the scoped keys.
+Library 0.10 allows new MicroOVN clusters to work with old distributors;
+new distributors also support old MicroOVN clusters. All MicroOVN consumers
+sharing a cluster must use a consistent version. A coordinated distributor
+upgrade is not required.
 
 ** Development Setup
 You need ~tox~ for running tests:
@@ -74,7 +74,7 @@ variables:
   auto-detected from cwd)
 - ~TOKEN_DISTRIBUTOR_CHARM_PATH~: Path to a pre-built token distributor charm
   for the same-hostname rejoin regression test (default: ~latest/edge~).
-  Use a build containing the matching library update until it is released.
+  The test supports both old and new distributor builds.
 - ~INTERFACE_CONSUMER_CHARM_PATH~: Path to a pre-built interface-consumer
   charm (default: auto-detected from [[file:tests/interface-consumer][tests/interface-consumer]])
 
