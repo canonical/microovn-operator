@@ -25,7 +25,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 9
+LIBPATCH = 10
 
 
 logger = logging.getLogger(__name__)
@@ -43,9 +43,12 @@ def token_request_key(hostname: str, request_id: str = "") -> str:
     request ID prevents a replacement unit from consuming its predecessor's
     token, even if departure events were missed or an old mirror comes back.
     Colons cannot occur in hostnames, so the communicator can recover the real
-    hostname when generating the token.
+    hostname when generating the token. Advertise the complete key in the
+    hostname field so older distributors can mirror it without understanding
+    request IDs. Already-scoped keys are returned unchanged. All consumers
+    sharing a cluster must support the key format.
     """
-    return f"{hostname}:{request_id}" if request_id else hostname
+    return f"{hostname}:{request_id}" if request_id and ":" not in hostname else hostname
 
 
 def mirror_id(hostname):
@@ -143,6 +146,7 @@ class TokenDistributorProvides(ops.framework.Object):
                 # do not yet have a token for it).
                 hostname = unit_data.get("hostname")
                 if hostname:
+                    # Preserve opaque keys, also accepting patch 9's separate ID.
                     key = token_request_key(hostname, unit_data.get(TOKEN_REQUEST_ID_KEY, ""))
                     merged.setdefault(mirror_id(key), EMPTY_STRING)
 
@@ -486,13 +490,15 @@ class TokenConsumer(ops.framework.Object):
         return True
 
     def _add_hostname(self, relation: ops.Relation):
-        relation.data[self.charm.unit]["hostname"] = get_hostname()
         # Joined legacy units keep their existing request. Unjoined units also
         # get a new identity on upgrade, so they stop retrying stale tokens.
         if not self._stored.in_cluster and not self._stored.token_request_id:
             self._stored.token_request_id = uuid4().hex
-        if self._stored.token_request_id:
-            relation.data[self.charm.unit][TOKEN_REQUEST_ID_KEY] = self._stored.token_request_id
+        unit_data = relation.data[self.charm.unit]
+        unit_data["hostname"] = token_request_key(get_hostname(), self._stored.token_request_id)
+        # Patch 9 distributors append this field themselves; remove it to avoid
+        # appending the ID twice when updating an existing consumer.
+        unit_data.pop(TOKEN_REQUEST_ID_KEY, None)
 
     def _on_upgrade_charm(self, event: ops.UpgradeCharmEvent):
         for relation in self.charm.model.relations[self.relation_name]:
