@@ -17,10 +17,10 @@ from functools import cached_property
 import ops
 from charmlibs.interfaces.tls_certificates import Mode, TLSCertificatesRequiresV4
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
-from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
 from charms.microovn.v0.ovsdb import OVSDBProvides
 from charms.ovn_central_k8s.v0.ovsdb import OVSDBCMSRequires
 
+from cluster import TokenConsumer
 from config import CharmConfig
 from constants import (
     ALERT_RULES_DIR,
@@ -176,7 +176,8 @@ class MicroovnCharm(ops.CharmBase):
     def _on_update_status(self, _: ops.EventBase) -> None:
         """Update the unit status."""
         if not self.is_in_cluster:
-            self.unit.status = ops.MaintenanceStatus("Waiting for token distrbutor relation")
+            if not isinstance(self.unit.status, ops.BlockedStatus):
+                self.unit.status = ops.MaintenanceStatus("Waiting for token distributor relation")
             return
 
         # Re-evaluate role assignment constraints on every status check

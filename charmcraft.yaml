@@ -118,6 +118,9 @@ charm-libs:
   - lib: role_distributor.role_assignment
     version: "0"
 
+extra-bindings:
+  data:
+
 requires:
   cluster:
     interface: worker-cluster

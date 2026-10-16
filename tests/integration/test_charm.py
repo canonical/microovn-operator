@@ -4,8 +4,10 @@
 
 import json
 import os
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
 import jubilant
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -96,14 +98,50 @@ def previous_release(track):
             return y + ".03"
 
 
-def test_integrate_basic(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
-    juju_lxd.deploy(charm_path, app=app_name)
-    juju_lxd.add_unit(app_name)
+def test_integrate_basic(
+    juju_lxd: jubilant.Juju,
+    charm_path: Path,
+    app_name: str,
+    network_bindings: dict[str, str],
+):
+    juju_lxd.deploy(charm_path, app=app_name, bind=network_bindings or None)
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
     juju_lxd.integrate(app_name, TOKEN_DISTRIBUTOR_CHARM)
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
+    # Add a unit after bootstrap to exercise both preseed modes.
+    juju_lxd.add_unit(app_name)
+    juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
     juju_lxd.wait(jubilant.all_agents_idle, timeout=DEFAULT_TIMEOUT)
     juju_lxd.exec("microovn status", unit=f"{app_name}/1")
+
+    expected_members = {}
+    for unit in juju_lxd.status().apps[app_name].units:
+        cluster_address = juju_lxd.exec(
+            "network-get cluster --bind-address", unit=unit
+        ).stdout.strip()
+        data_address = juju_lxd.exec("network-get data --bind-address", unit=unit).stdout.strip()
+        hostname = juju_lxd.exec("hostname", unit=unit).stdout.strip()
+        expected_members[hostname] = ip_address(cluster_address)
+        encap_ip = (
+            juju_lxd.exec(
+                "microovn.ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip", unit=unit
+            )
+            .stdout.strip()
+            .strip('"')
+        )
+        assert ip_address(encap_ip) == ip_address(data_address)
+        if network_bindings and network_bindings["cluster"] != network_bindings["data"]:
+            assert ip_address(cluster_address) != ip_address(data_address)
+
+    for unit in juju_lxd.status().apps[app_name].units:
+        members = json.loads(
+            juju_lxd.exec("microovn cluster list --format json", unit=unit).stdout
+        )
+        assert all(member["status"] == "ONLINE" for member in members)
+        assert {
+            member["name"]: ip_address(urlsplit("//" + member["address"]).hostname)
+            for member in members
+        } == expected_members
 
 
 def test_integrate_post_start(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):

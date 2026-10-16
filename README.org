@@ -18,6 +18,45 @@ juju relate microovn microcluster-token-distributor
 This will give you 3 MicroOVN nodes, that should set up a stable cluster
 using the microcluster-token-distributor.
 
+*** Network spaces
+The charm initializes every node with a YAML preseed for ~microovn init~,
+using the local addresses selected by Juju for these bindings:
+
+- ~cluster~: MicroOVN cluster/quorum communication and OVN database endpoints.
+- ~data~: GENEVE tunnel encapsulation between chassis.
+
+For example, with existing Juju spaces named ~management~ and ~underlay~:
+#+begin_src shell
+juju deploy microovn -n 3 --bind "cluster=management data=underlay"
+juju deploy microcluster-token-distributor
+juju relate microovn:cluster microcluster-token-distributor
+#+end_src
+
+No space setup is needed for the basic deployment above. Without ~--bind~,
+Juju supplies addresses from the model's default space (normally ~alpha~).
+On a single-network machine, cluster and GENEVE traffic use the same local
+address. You do not need to create spaces or configure IP addresses manually.
+
+Bindings without an explicit space inherit the application's default. To use
+one network for both purposes, bind both endpoints to that space, or set the
+application default with ~--bind management~. Binding only ~cluster~ does not
+change the default used by ~data~, and vice versa.
+
+The bootstrap node and joining nodes use the same binding rules, including
+when multiple MicroOVN applications share a token distributor. Bind each
+application to mutually reachable cluster networks and mutually reachable
+data networks, with a compatible address family for each purpose. Subnets
+may differ across nodes when routing connects them. The charm uses Juju's
+selected bind address, including IPv6, rather than choosing an interface by
+name or assuming that the first NIC is the underlay. Missing or unusable
+binding addresses block initialization instead of falling back to another
+network.
+
+Set bindings before relating the token distributor. These addresses are
+initialization settings: changing a space binding or upgrading an existing
+cluster does not migrate its running cluster or tunnel addresses. Preseed
+support is required in the selected MicroOVN snap revision.
+
 ** Integrations
 MicroOVN supports a couple of useful relations:
 - ~ovsdb~: which exposes the connection strings for the ovs northbound and

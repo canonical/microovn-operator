@@ -1166,4 +1166,4 @@ dev = ["codespell", "coverage", "jubilant", "ops", "pyright", "pytest", "pytest-
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "92e10f96e7fbffbd671322e00e3c17c14a9d85d4b48985b9a398e0b06c99b8d8"
+content-hash = "28c590e49c7de8cbd9372940ca42f9d3a2d466d28850eb197cd370437642a9f2"

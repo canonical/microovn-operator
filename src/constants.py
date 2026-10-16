@@ -9,6 +9,7 @@ from charmlibs.interfaces.tls_certificates import CertificateRequestAttributes
 
 OVSDB_RELATION = "ovsdb"
 WORKER_RELATION = "cluster"
+DATA_BINDING = "data"
 CERTIFICATES_RELATION = "certificates"
 OVSDBCMD_RELATION = "ovsdb-external"
 ROLE_ASSIGNMENT_RELATION = "role-assignment"

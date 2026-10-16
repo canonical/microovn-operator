@@ -23,6 +23,22 @@ def pytest_addoption(parser: pytest.OptionGroup):
         default=False,
         help="Keep temporarily created models.",
     )
+    parser.addoption("--cluster-space", help="Juju space for cluster traffic in the basic test")
+    parser.addoption("--data-space", help="Juju space for GENEVE traffic in the basic test")
+
+
+@pytest.fixture(scope="module", params=["default-network", "explicit-spaces"])
+def network_bindings(request: pytest.FixtureRequest) -> dict[str, str]:
+    """Test defaults and optionally two provider-configured networks."""
+    cluster_space = request.config.getoption("--cluster-space")
+    data_space = request.config.getoption("--data-space")
+    if bool(cluster_space) != bool(data_space):
+        raise pytest.UsageError("Specify both --cluster-space and --data-space")
+    if request.param == "default-network":
+        return {}
+    if not cluster_space:
+        pytest.skip("Specify --cluster-space and --data-space to test explicit bindings")
+    return {"cluster": cluster_space, "data": data_space}
 
 
 @pytest.fixture(scope="module")

@@ -69,6 +69,16 @@ Execute integration tests using the ~check-integration~ target:
 make check-integration
 #+end_src
 
+The basic integration test always includes a deployment without ~--bind~,
+checking each node's cluster and GENEVE addresses against Juju's defaults.
+To also exercise separate NICs, configure two spaces in the test provider,
+with machines able to attach to both networks, and run:
+#+begin_src shell
+tox -e integration -- tests/integration/test_charm.py::test_integrate_basic --cluster-space management --data-space underlay
+#+end_src
+The spaces must be available in the temporary test model. Use IPv6 spaces
+to exercise IPv6 cluster endpoints and encapsulation.
+
 Optionally tests may be run in parallel, for environments with
 sufficient resources:
 #+begin_src shell

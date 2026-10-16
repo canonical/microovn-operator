@@ -751,7 +751,7 @@ def test_on_cluster_changed_not_in_cluster(
 
     mock_call_microovn_command.assert_not_called()
     assert manager.charm.unit.status == ops.MaintenanceStatus(
-        "Waiting for token distrbutor relation"
+        "Waiting for token distributor relation"
     )
 
 
