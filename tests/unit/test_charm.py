@@ -18,6 +18,7 @@ from charmlibs.interfaces.tls_certificates import (
     generate_csr,
     generate_private_key,
 )
+from charms.microcluster_token_distributor.v0 import token_distributor
 from charms.microcluster_token_distributor.v0.token_distributor import TokenConsumer
 from ops import testing
 from scenario.errors import UncaughtCharmError
@@ -262,6 +263,72 @@ def test_on_update_status_active(
         manager.charm.token_consumer._stored.in_cluster = True
 
     assert manager.charm.unit.status == ops.ActiveStatus()
+
+
+@pytest.mark.parametrize(
+    "has_relation, initial_status, expected_status",
+    [
+        (
+            False,
+            testing.MaintenanceStatus(),
+            ops.MaintenanceStatus("Waiting for token distributor relation"),
+        ),
+        (
+            True,
+            testing.MaintenanceStatus("Token not in mirror"),
+            ops.WaitingStatus("Waiting for cluster join token"),
+        ),
+        (
+            True,
+            testing.BlockedStatus("Joining cluster failed"),
+            ops.BlockedStatus("Joining cluster failed"),
+        ),
+        (
+            True,
+            testing.BlockedStatus("Unable to bootstrap cluster"),
+            ops.BlockedStatus("Unable to bootstrap cluster"),
+        ),
+    ],
+)
+def test_on_update_status_before_join(has_relation, initial_status, expected_status):
+    ctx = testing.Context(MicroovnCharm)
+    state = ctx.run(
+        ctx.on.update_status(),
+        testing.State(
+            relations=[testing.Relation(WORKER_RELATION)] if has_relation else [],
+            unit_status=initial_status,
+        ),
+    )
+    assert state.unit_status == expected_status
+
+
+def test_failed_join_remains_blocked(caplog):
+    """Both the charm's relation handler and update-status must retain the error."""
+    token = "private-join-token"
+    relation = testing.Relation(
+        WORKER_RELATION,
+        remote_units_data={0: {"mirror": "up", "mirror-node:request-id": token}},
+    )
+    ctx = testing.Context(MicroovnCharm)
+    with (
+        patch.object(token_distributor, "get_hostname", return_value="node"),
+        patch.object(MicroovnCharm, "_migrate_ovs"),
+        patch.object(token_distributor.subprocess, "run") as run,
+    ):
+        run.return_value = CompletedProcess([], 1, stdout="", stderr=f"Token rejected: {token}")
+        with ctx(
+            ctx.on.relation_changed(relation, remote_unit=0), testing.State(relations=[relation])
+        ) as manager:
+            manager.charm.token_consumer._stored.token_request_id = "request-id"
+            state = manager.run()
+        assert state.unit_status == ops.BlockedStatus("Joining cluster failed")
+        assert state.deferred
+
+        state = ctx.run(ctx.on.update_status(), state)
+        assert state.unit_status == ops.BlockedStatus("Joining cluster failed")
+
+    assert "Token rejected" in caplog.text
+    assert token not in caplog.text
 
 
 def test_on_update_status_metrics_unreachable(
@@ -750,9 +817,7 @@ def test_on_cluster_changed_not_in_cluster(
         manager.charm.token_consumer._stored.in_cluster = False
 
     mock_call_microovn_command.assert_not_called()
-    assert manager.charm.unit.status == ops.MaintenanceStatus(
-        "Waiting for token distrbutor relation"
-    )
+    assert manager.charm.unit.status == ops.WaitingStatus("Waiting for cluster join token")
 
 
 def test_dataplane_mode_success(

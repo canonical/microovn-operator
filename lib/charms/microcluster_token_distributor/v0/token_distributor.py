@@ -13,6 +13,7 @@ import os
 import subprocess
 import time
 from collections import Counter
+from uuid import uuid4
 
 import ops
 
@@ -24,7 +25,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 8
+LIBPATCH = 10
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,22 @@ logger = logging.getLogger(__name__)
 MIRROR_PREFIX = "mirror-"
 EMPTY_STRING = "empty"
 BOOTSTRAP_APP_KEY = "bootstrap-app"
+TOKEN_REQUEST_ID_KEY = "token-request-id"
+
+
+def token_request_key(hostname: str, request_id: str = "") -> str:
+    """Scope a token to one unit incarnation, retaining legacy hostname-only keys.
+
+    Tokens are consumed when a node joins, but mirrors retain them. A persistent
+    request ID prevents a replacement unit from consuming its predecessor's
+    token, even if departure events were missed or an old mirror comes back.
+    Colons cannot occur in hostnames, so the communicator can recover the real
+    hostname when generating the token. Advertise the complete key in the
+    hostname field so older distributors can mirror it without understanding
+    request IDs. Already-scoped keys are returned unchanged. All consumers
+    sharing a cluster must support the key format.
+    """
+    return f"{hostname}:{request_id}" if request_id and ":" not in hostname else hostname
 
 
 def mirror_id(hostname):
@@ -86,6 +103,7 @@ class TokenDistributorProvides(ops.framework.Object):
         self.relation_name = relation_name
 
         self.framework.observe(self.charm.on.leader_elected, self._on_leader_elected)
+        self.framework.observe(self.charm.on.upgrade_charm, self._on_token_relation_changed)
         self.framework.observe(
             self.charm.on[self.relation_name].relation_changed, self._on_token_relation_changed
         )
@@ -128,7 +146,9 @@ class TokenDistributorProvides(ops.framework.Object):
                 # do not yet have a token for it).
                 hostname = unit_data.get("hostname")
                 if hostname:
-                    merged.setdefault(mirror_id(hostname), EMPTY_STRING)
+                    # Preserve opaque keys, also accepting patch 9's separate ID.
+                    key = token_request_key(hostname, unit_data.get(TOKEN_REQUEST_ID_KEY, ""))
+                    merged.setdefault(mirror_id(key), EMPTY_STRING)
 
         return merged
 
@@ -149,8 +169,8 @@ class TokenDistributorProvides(ops.framework.Object):
                 logger.info("added {0} to mirror".format(key))
             local_data[key] = value
 
-    def _on_token_relation_changed(self, event: ops.RelationChangedEvent):
-        if self.charm.unit.is_leader():
+    def _on_token_relation_changed(self, event: ops.EventBase):
+        if self.charm.unit.is_leader() and self.charm.model.relations[self.relation_name]:
             self._handle_bootstrappable_app()
             for relation in self.charm.model.relations[self.relation_name]:
                 self._handle_mirror(relation)
@@ -237,13 +257,26 @@ class TokenConsumer(ops.framework.Object):
     on = TokenConsumerEvents()
     _stored = ops.framework.StoredState()
 
-    def _call_cluster_command(self, *args) -> (int, str):
+    def _call_cluster_command(self, *args) -> tuple[int, str]:
         result = subprocess.run(
             self.command_name + list(args),
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
         )
+        if result.returncode:
+            stderr = (result.stderr or "").strip()
+            # Log the operation, never its arguments or stdout (which can contain
+            # tokens). Some CLI errors also echo the supplied join token.
+            if len(args) > 1 and args[0] == "join" and args[1]:
+                stderr = stderr.replace(args[1], "<redacted>")
+            logger.error(
+                "%s %s failed with exit code %s: %s",
+                " ".join(self.command_name),
+                args[0] if args else "",
+                result.returncode,
+                stderr or "No stderr output",
+            )
         return result.returncode, result.stdout
 
     def _to_mirror_key(self, key: str) -> str:
@@ -345,7 +378,8 @@ class TokenConsumer(ops.framework.Object):
                 continue
 
             # generate token and add to this side of mirror
-            error, token = self._call_cluster_command("add", key)
+            hostname = key.partition(":")[0]
+            error, token = self._call_cluster_command("add", hostname)
             if not error:
                 token = token.strip()
                 self.add_to_mirror(relation, {key: token})
@@ -353,9 +387,7 @@ class TokenConsumer(ops.framework.Object):
                 logger.info("added token for {0}".format(key))
                 new_token = True
             else:
-                logger.info(
-                    "generate token for {0} with code {1} and stdout {2}".format(key, error, token)
-                )
+                logger.error("Failed generating token for %s (exit code %s)", key, error)
 
         return new_token
 
@@ -364,10 +396,11 @@ class TokenConsumer(ops.framework.Object):
         self.charm = charm
         self.command_name = command_name
         self.relation_name = relation_name
-        self._stored.set_default(in_cluster=False)
+        self._stored.set_default(in_cluster=False, token_request_id="")
 
         self.framework.observe(self.charm.on.install, self._on_install)
         self.framework.observe(self.charm.on.remove, self._on_remove)
+        self.framework.observe(self.charm.on.upgrade_charm, self._on_upgrade_charm)
         self.framework.observe(
             self.charm.on[self.relation_name].relation_changed, self._on_cluster_changed
         )
@@ -439,7 +472,8 @@ class TokenConsumer(ops.framework.Object):
         for k in mirror_data.keys():
             if (
                 mirror_data[k] == EMPTY_STRING
-                and relation.data[self.charm.unit][self._to_mirror_key(k)] != EMPTY_STRING
+                and relation.data[self.charm.unit].get(self._to_mirror_key(k), EMPTY_STRING)
+                != EMPTY_STRING
             ):
                 relation.data[self.charm.unit]["mirror"] = "up"
                 break
@@ -456,11 +490,27 @@ class TokenConsumer(ops.framework.Object):
         return True
 
     def _add_hostname(self, relation: ops.Relation):
-        relation.data[self.charm.unit]["hostname"] = get_hostname()
+        # Joined legacy units keep their existing request. Unjoined units also
+        # get a new identity on upgrade, so they stop retrying stale tokens.
+        if not self._stored.in_cluster and not self._stored.token_request_id:
+            self._stored.token_request_id = uuid4().hex
+        unit_data = relation.data[self.charm.unit]
+        unit_data["hostname"] = token_request_key(get_hostname(), self._stored.token_request_id)
+        # Patch 9 distributors append this field themselves; remove it to avoid
+        # appending the ID twice when updating an existing consumer.
+        unit_data.pop(TOKEN_REQUEST_ID_KEY, None)
+
+    def _on_upgrade_charm(self, event: ops.UpgradeCharmEvent):
+        for relation in self.charm.model.relations[self.relation_name]:
+            self._add_hostname(relation)
+            if self._stored.in_cluster:
+                self._handle_mirror(relation)
 
     def _on_install(self, event: ops.InstallEvent):
         if not self.charm.model.get_relation(self.relation_name):
-            self.charm.unit.status = ops.MaintenanceStatus("Waiting for token distrbutor relation")
+            self.charm.unit.status = ops.MaintenanceStatus(
+                "Waiting for token distributor relation"
+            )
 
     def _on_remove(self, event: ops.RemoveEvent):
         if self._stored.in_cluster:
@@ -469,14 +519,14 @@ class TokenConsumer(ops.framework.Object):
                 logger.error("failed removing {0} from cluster".format(get_hostname()))
 
     def _on_cluster_changed(self, event: ops.RelationChangedEvent):
+        self._add_hostname(event.relation)
         if not self._stored.in_cluster:
-            if token := self.find_value(event.relation, get_hostname(), keep_empty=False):
+            key = token_request_key(get_hostname(), self._stored.token_request_id)
+            if token := self.find_value(event.relation, key, keep_empty=False):
                 successful = self._join_with_token(token)
                 if not successful:
                     self.charm.unit.status = ops.BlockedStatus("Joining cluster failed")
-                    logger.error(
-                        "failed {0} joining cluster with token: {1}".format(get_hostname(), token)
-                    )
+                    logger.error("Failed joining %s to cluster", get_hostname())
                     event.defer()
                     return
             else:

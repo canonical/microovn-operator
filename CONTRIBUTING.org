@@ -1,4 +1,20 @@
 * Contributing
+** Token distributor library
+The token distributor library and its unit tests are maintained in
+[[https://github.com/canonical/microcluster-token-distributor-operator][microcluster-token-distributor-operator]]. Publish library changes from that
+project, then update the vendored copy here in a library-version update commit.
+
+The fix for [[https://bugs.launchpad.net/microovn-operator/+bug/2170962][LP#2170962]] advertises ~<hostname>:<request-id>~ in the existing
+~hostname~ field. Distributors mirror that opaque key unchanged, while the
+MicroOVN communicator generates tokens for the real hostname.
+New units never fall back to hostname-only tokens, which may have already
+been consumed by a removed unit. Joined legacy units retain their requests.
+
+Library 0.10 allows new MicroOVN clusters to work with old distributors;
+new distributors also support old MicroOVN clusters. All MicroOVN consumers
+sharing a cluster must use a consistent version. A coordinated distributor
+upgrade is not required.
+
 ** Development Setup
 You need ~tox~ for running tests:
 #+begin_src shell
@@ -56,6 +72,9 @@ variables:
   ~concierge-microk8s~)
 - ~MICROOVN_CHARM_PATH~: Path to a pre-built microovn charm (default:
   auto-detected from cwd)
+- ~TOKEN_DISTRIBUTOR_CHARM_PATH~: Path to a pre-built token distributor charm
+  for the same-hostname rejoin regression test (default: ~latest/edge~).
+  The test supports both old and new distributor builds.
 - ~INTERFACE_CONSUMER_CHARM_PATH~: Path to a pre-built interface-consumer
   charm (default: auto-detected from [[file:tests/interface-consumer][tests/interface-consumer]])
 
@@ -67,6 +86,12 @@ existing Juju controllers.
 Execute integration tests using the ~check-integration~ target:
 #+begin_src shell
 make check-integration
+#+end_src
+
+To exercise repeated removal and replacement on the same hostname, including
+verification that each unit gets a distinct token:
+#+begin_src shell
+tox -e integration -- tests/integration/test_charm.py::test_readd_same_hostname
 #+end_src
 
 Optionally tests may be run in parallel, for environments with
