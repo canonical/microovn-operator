@@ -19,7 +19,7 @@ from constants import MICROOVN_TRACK
 TOKEN_DISTRIBUTOR_CHARM = "microcluster-token-distributor"
 TOKEN_DISTRIBUTOR_CHANNEL = "v1/edge"
 OTCOL_CHARM = "opentelemetry-collector"
-OTCOL_CHANNEL = "2/stable"
+OTCOL_CHANNEL = "0.130/stable"
 SELF_SIGNED_CERTIFICATES_CHARM = "self-signed-certificates"
 SELF_SIGNED_CERTIFICATES_CHANNEL = "1/stable"
 OVN_CENTRAL_K8S_CHARM = "ovn-central-k8s"
@@ -462,7 +462,9 @@ def test_cos_relation(juju_lxd: jubilant.Juju, charm_path: Path, app_name: str):
     juju_lxd.wait(jubilant.all_active, timeout=DEFAULT_TIMEOUT)
 
     # deploy opentelemetry-collector
-    juju_lxd.deploy(OTCOL_CHARM, channel=OTCOL_CHANNEL)
+    # Select the collector revision that matches the charm's base; 0.130/stable
+    # publishes both 24.04 and 26.04 while the model default is the runner's.
+    juju_lxd.deploy(OTCOL_CHARM, channel=OTCOL_CHANNEL, base=_charm_base(charm_path))
     juju_lxd.integrate(f"{app_name}:{cos_endpoint}", f"{OTCOL_CHARM}:{cos_endpoint}")
     juju_lxd.wait(
         lambda status: jubilant.all_blocked(status, OTCOL_CHARM),
@@ -571,7 +573,11 @@ def upgrade_from_channel_test(
 ):
     """Test upgrading the charm from microovn_channel to the locally built charm."""
     # Deploy the stable version from Charmhub
-    juju_lxd.deploy("microovn", channel=microovn_channel, app=app_name)
+    # Deploy the channel revision for the same base as the locally built charm
+    # so the in-place refresh below is a same-base upgrade.
+    juju_lxd.deploy(
+        "microovn", channel=microovn_channel, app=app_name, base=_charm_base(charm_path)
+    )
     juju_lxd.deploy(TOKEN_DISTRIBUTOR_CHARM, channel=TOKEN_DISTRIBUTOR_CHANNEL)
 
     # Integrate and wait for the stable deployment to settle
